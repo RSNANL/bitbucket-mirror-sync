@@ -1,0 +1,70 @@
+name: Mirror aquarium nutrient doser
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aquarium-nutrient-doser-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Sync branches and tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Configure repository-specific SSH keys
+        shell: bash
+        env:
+          BBT_SSH_KEY: ${{ secrets.BBT_DOSER_MIRROR_SSH_KEY }}
+          GHB_SSH_KEY: ${{ secrets.GHB_DOSER_MIRROR_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$BBT_SSH_KEY" > ~/.ssh/bitbucket_doser_ro
+          printf '%s\n' "$GHB_SSH_KEY" > ~/.ssh/github_doser_mirror_rw
+          chmod 600 ~/.ssh/bitbucket_doser_ro ~/.ssh/github_doser_mirror_rw
+
+          ssh-keyscan -H bitbucket.org github.com > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<'EOF'
+          Host bitbucket-doser
+            HostName bitbucket.org
+            User git
+            IdentityFile ~/.ssh/bitbucket_doser_ro
+            IdentitiesOnly yes
+
+          Host github-doser-mirror
+            HostName github.com
+            User git
+            IdentityFile ~/.ssh/github_doser_mirror_rw
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Mirror Bitbucket branches and tags
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git init --bare doser.git
+          git -C doser.git remote add source \
+            git@bitbucket-doser:rsna_nl/aquarium-nutrient-doser.git
+          git -C doser.git remote add mirror \
+            git@github-doser-mirror:RSNANL/aquarium-nutrient-doser-mirror.git
+
+          git -C doser.git fetch --prune source \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
+
+          git -C doser.git push --prune mirror \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
