@@ -3,7 +3,7 @@ name: Mirror aquarium nutrient doser
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "17 3 * * *"
 
 permissions:
   contents: read
