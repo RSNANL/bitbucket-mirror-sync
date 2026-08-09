@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHmacSha256, toHex } from "../src/crypto.js";
+import { GitHubAppAuthenticationError } from "../src/github-app.js";
 import { createWorker } from "../src/handler.js";
 
 const config = {
@@ -78,6 +79,68 @@ test("rejects non-POST methods", async () => {
   const worker = createWorker(config);
   const response = await worker.fetch(await request({ method: "GET" }), env());
   assert.equal(response.status, 405);
+});
+
+test("keeps the GitHub App authentication preflight hidden without its ephemeral token", async () => {
+  const worker = createWorker(config, { getDispatchToken });
+  const preflightRequest = new Request(
+    "https://worker.example/_internal/github-app-authentication",
+    { method: "POST", headers: { authorization: "Bearer wrong-token" } }
+  );
+  assert.equal((await worker.fetch(preflightRequest, env())).status, 404);
+});
+
+test("verifies the GitHub App authentication without dispatching a workflow", async () => {
+  let tokenRequests = 0;
+  let dispatchRequests = 0;
+  const worker = createWorker(config, {
+    getDispatchToken: async () => {
+      tokenRequests += 1;
+      return token;
+    },
+    fetchImpl: async () => {
+      dispatchRequests += 1;
+      return new Response(null, { status: 204 });
+    }
+  });
+  const preflightRequest = new Request(
+    "https://worker.example/_internal/github-app-authentication",
+    { method: "POST", headers: { authorization: "Bearer ephemeral-token" } }
+  );
+  const response = await worker.fetch(preflightRequest, {
+    ...env(),
+    GITHUB_APP_AUTH_PREFLIGHT_TOKEN: "ephemeral-token"
+  });
+  assert.equal(response.status, 204);
+  assert.equal(tokenRequests, 1);
+  assert.equal(dispatchRequests, 0);
+});
+
+test("returns safe authentication detail from the protected preflight", async () => {
+  const worker = createWorker(config, {
+    getDispatchToken: async () => {
+      throw new GitHubAppAuthenticationError("GitHub App installation token request failed: HTTP 401.");
+    }
+  });
+  const preflightRequest = new Request(
+    "https://worker.example/_internal/github-app-authentication",
+    { method: "POST", headers: { authorization: "Bearer ephemeral-token" } }
+  );
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const response = await worker.fetch(preflightRequest, {
+      ...env(),
+      GITHUB_APP_AUTH_PREFLIGHT_TOKEN: "ephemeral-token"
+    });
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), {
+      error: "github_app_authentication_failed",
+      detail: "GitHub App installation token request failed: HTTP 401."
+    });
+  } finally {
+    console.error = originalError;
+  }
 });
 
 test("hides unknown and disabled mirrors", async () => {

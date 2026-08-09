@@ -190,6 +190,19 @@ function Test-CloudflareWorkerDeployment {
     return $null -ne $response
 }
 
+function Get-CloudflareWorkerBaseUrl {
+    param([string]$WorkerConfig = 'worker/wrangler.jsonc')
+
+    $credentials = Get-CloudflareCredentials
+    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
+    $response = Invoke-CloudflareApi -Method GET -Path "accounts/$($credentials.AccountId)/workers/subdomain"
+    $subdomain = [string]$response.result.subdomain
+    if ([string]::IsNullOrWhiteSpace($subdomain)) {
+        throw 'Cloudflare Workers subdomain could not be determined.'
+    }
+    return "https://$workerName.$subdomain.workers.dev"
+}
+
 function Assert-CloudflareWorkerReady {
     param(
         [string[]]$RequiredSecretNames = @('GITHUB_APP_PRIVATE_KEY'),
@@ -207,6 +220,39 @@ function Assert-CloudflareWorkerReady {
         }
     }
     return $true
+}
+
+function Test-CloudflareWorkerGitHubAppAuthentication {
+    param(
+        [Parameter(Mandatory)][string]$WorkerBaseUrl,
+        [Parameter(Mandatory)][string]$PreflightToken
+    )
+
+    $uri = "$(Resolve-WorkerBaseUrl -WorkerBaseUrl $WorkerBaseUrl)/_internal/github-app-authentication"
+    $client = [Net.Http.HttpClient]::new()
+    $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, $uri)
+    $response = $null
+    try {
+        $request.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $PreflightToken)
+        $request.Headers.Accept.Add([Net.Http.Headers.MediaTypeWithQualityHeaderValue]::new('application/json'))
+        $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if ([int]$response.StatusCode -ne 204) {
+            $detail = $null
+            if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
+                try { $detail = [string](($responseBody | ConvertFrom-Json).detail) }
+                catch { }
+            }
+            if ([string]::IsNullOrWhiteSpace($detail)) { $detail = $response.ReasonPhrase }
+            throw "Cloudflare Worker GitHub App authentication preflight failed (HTTP $([int]$response.StatusCode)): $detail"
+        }
+        return $true
+    }
+    finally {
+        if ($null -ne $response) { $response.Dispose() }
+        $request.Dispose()
+        $client.Dispose()
+    }
 }
 
 function Publish-CloudflareWorker {
@@ -283,4 +329,4 @@ function Remove-CloudflareWorkerSecret {
     [void](Invoke-CloudflareApi -Method DELETE -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/secrets/$encodedSecretName" -AllowMissing)
 }
 
-Export-ModuleMember -Function Get-CloudflareCredentials, Get-CloudflareWorkerName, Invoke-CloudflareApi, Test-CloudflareAuthentication, Get-CloudflareWorkerSecrets, Test-CloudflareWorkerDeployment, Assert-CloudflareWorkerReady, Publish-CloudflareWorker, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret
+Export-ModuleMember -Function Get-CloudflareCredentials, Get-CloudflareWorkerName, Get-CloudflareWorkerBaseUrl, Invoke-CloudflareApi, Test-CloudflareAuthentication, Get-CloudflareWorkerSecrets, Test-CloudflareWorkerDeployment, Assert-CloudflareWorkerReady, Test-CloudflareWorkerGitHubAppAuthentication, Publish-CloudflareWorker, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret
