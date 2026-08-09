@@ -38,7 +38,9 @@
       "required": [
         "github_repository",
         "workflow_file",
-        "ref"
+        "ref",
+        "github_app_client_id",
+        "github_app_installation_id"
       ],
       "properties": {
         "github_repository": {
@@ -52,6 +54,21 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 255
+        },
+        "github_app_client_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "maxLength": 100
+        },
+        "github_app_installation_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
         }
       }
     },

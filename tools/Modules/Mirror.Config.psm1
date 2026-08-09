@@ -76,4 +76,19 @@ function Set-WorkerBaseUrl {
     ))
 }
 
+function Set-GitHubDispatchIdentity {
+    param(
+        [Parameter(Mandatory)][string]$ClientId,
+        [Parameter(Mandatory)][long]$InstallationId,
+        [string]$ConfigPath = 'config/mirrors.json'
+    )
+    $root = Get-RepositoryRoot
+    [void](Invoke-ExternalCommand -FilePath (Resolve-ExternalCommand node) -ArgumentList @(
+        (Join-Path $root 'scripts/set-github-dispatch-identity.mjs'),
+        '--config', (Join-Path $root $ConfigPath),
+        '--client-id', $ClientId,
+        '--installation-id', ([string]$InstallationId)
+    ))
+}
+
 Export-ModuleMember -Function *

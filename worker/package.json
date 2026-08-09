@@ -5,8 +5,7 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "typecheck": "tsc -p jsconfig.json",
-    "validate": "npm run typecheck && npm test",
-    "deploy": "wrangler deploy"
+    "validate": "npm run typecheck && npm test"
   },
   "engines": {
     "node": ">=20"

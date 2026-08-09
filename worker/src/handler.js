@@ -1,5 +1,6 @@
 // @ts-check
 import { verifyBitbucketSignature } from "./crypto.js";
+import { getGitHubInstallationToken } from "./github-app.js";
 
 /**
  * @typedef {{
@@ -12,12 +13,18 @@ import { verifyBitbucketSignature } from "./crypto.js";
  *
  * @typedef {{
  *   worker: { base_url: string | null, path_prefix: string },
- *   dispatch: { github_repository: string, workflow_file: string, ref: string },
+ *   dispatch: {
+ *     github_repository: string,
+ *     workflow_file: string,
+ *     ref: string,
+ *     github_app_client_id: string | null,
+ *     github_app_installation_id: number | null
+ *   },
  *   mirrors: Mirror[]
  * }} MirrorConfig
  *
  * @typedef {{
- *   GITHUB_DISPATCH_TOKEN?: string,
+ *   GITHUB_APP_PRIVATE_KEY?: string,
  *   [key: string]: string | undefined
  * }} WorkerEnv
  */
@@ -80,11 +87,15 @@ function jsonResponse(body, status) {
 
 /**
  * @param {MirrorConfig} config
- * @param {{ fetchImpl?: typeof fetch }} [options]
+ * @param {{
+ *   fetchImpl?: typeof fetch,
+ *   getDispatchToken?: typeof getGitHubInstallationToken
+ * }} [options]
  */
 export function createWorker(config, options = {}) {
   const mirrorIndex = buildMirrorIndex(config);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const getDispatchToken = options.getDispatchToken ?? getGitHubInstallationToken;
 
   return {
     /**
@@ -136,10 +147,21 @@ export function createWorker(config, options = {}) {
         return jsonResponse({ error: "repository_mismatch" }, 400);
       }
 
-      const dispatchToken = env.GITHUB_DISPATCH_TOKEN;
-      if (!dispatchToken) {
-        console.error("Missing GITHUB_DISPATCH_TOKEN Worker secret.");
+      if (
+        !config.dispatch.github_app_client_id ||
+        !config.dispatch.github_app_installation_id ||
+        !env.GITHUB_APP_PRIVATE_KEY
+      ) {
+        console.error("Missing GitHub App dispatch identity configuration.");
         return jsonResponse({ error: "service_unavailable" }, 503);
+      }
+
+      let dispatchToken;
+      try {
+        dispatchToken = await getDispatchToken(config, env, fetchImpl);
+      } catch {
+        console.error(`GitHub App installation authentication failed for ${mirror.id}.`);
+        return jsonResponse({ error: "dispatch_failed" }, 502);
       }
 
       const dispatchUrl = `https://api.github.com/repos/${encodeRepositoryPath(config.dispatch.github_repository)}` +

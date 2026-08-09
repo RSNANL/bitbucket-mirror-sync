@@ -1,7 +1,7 @@
 {
-  "id": "roomba-automation",
+  "id": "generic-vacuum-statemachine-blueprint",
   "enabled": true,
-  "bitbucket_repository": "REPLACE_WORKSPACE/REPLACE_REPOSITORY",
-  "github_repository": "RSNANL/roomba-automation-mirror",
+  "bitbucket_repository": "rsna_nl/generic-vacuum-statemachine-blueprint",
+  "github_repository": "RSNANL/generic-vacuum-statemachine-blueprint-mirror",
   "scheduled_recovery": false
 }

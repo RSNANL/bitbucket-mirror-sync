@@ -54,8 +54,15 @@ if (-not $Apply) {
     return
 }
 if (-not $PSCmdlet.ShouldProcess($MirrorId, 'Provision Bitbucket-to-GitHub mirror infrastructure')) { return }
+if (
+    [string]::IsNullOrWhiteSpace([string]$config.dispatch.github_app_client_id) -or
+    $null -eq $config.dispatch.github_app_installation_id
+) {
+    throw 'GitHub App dispatch identity is not configured. Run .\tools\Deploy-MirrorWorker.ps1 before provisioning a mirror.'
+}
 
 & (Join-Path $PSScriptRoot 'Test-Prerequisites.ps1') -ConfigPath $ConfigPath
+[void](Assert-CloudflareWorkerReady)
 $bitbucketCredentials = Get-BitbucketCredentials
 $tempDirectory = New-SecureTemporaryDirectory -Prefix "mirror-$MirrorId"
 $state = @{

@@ -34,6 +34,7 @@ tools/
   Connect-MirrorSession.ps1 Interactive provider authentication.
   Disconnect-MirrorSession.ps1
   Modules/                  Provider and session modules.
+  Deploy-MirrorWorker.ps1   Session-scoped Worker deployment and bootstrap.
   New-Mirror.ps1            Mirror provisioning.
   Test-Mirror.ps1           Resource and dispatch validation.
   Rotate-MirrorKeys.ps1     Two-phase key rotation.
@@ -68,10 +69,10 @@ See `docs/authentication.md` for the provider application registrations and exac
 Only the mirror ID is configured. Deterministic technical names are derived from it:
 
 ```text
-Mirror ID:               roomba-automation
-GitHub Environment:      mirror-roomba-automation
-Worker secret binding:   WEBHOOK_ROOMBA_AUTOMATION
-Webhook route:           /webhooks/roomba-automation
+Mirror ID:               generic-vacuum-statemachine-blueprint
+GitHub Environment:      mirror-generic-vacuum-statemachine-blueprint
+Worker secret binding:   WEBHOOK_GENERIC_VACUUM_STATEMACHINE_BLUEPRINT
+Webhook route:           /webhooks/generic-vacuum-statemachine-blueprint
 ```
 
 ## Validation
@@ -90,13 +91,26 @@ Local operator prerequisites can be checked without provider authentication:
 
 ## Provisioning
 
+The Worker uses a dedicated GitHub App installation as its unattended dispatch identity. The app is installed only on `RSNANL/bitbucket-mirror-sync` and has only `Actions: write` plus mandatory metadata read access. Its client and installation IDs are non-secret configuration; its private key exists only as the encrypted `GITHUB_APP_PRIVATE_KEY` Worker binding.
+
+Bootstrap or update the Worker from the interactive management session before provisioning a mirror:
+
+```powershell
+./tools/Deploy-MirrorWorker.ps1 `
+  -GitHubAppClientId '<client-id>' `
+  -GitHubAppInstallationId <installation-id> `
+  -GitHubAppPrivateKeyPath '<downloaded-private-key.pem>'
+```
+
+The command is planning-only without `-Apply`. Direct Cloudflare API deployment preserves existing encrypted secret bindings and does not require Wrangler or a persistent deployment credential.
+
 Provisioning is planning-only unless `-Apply` is explicitly supplied:
 
 ```powershell
 ./tools/New-Mirror.ps1 `
-  -MirrorId roomba-automation `
-  -BitbucketRepository '<workspace>/<repository>' `
-  -GitHubRepository 'RSNANL/roomba-automation-mirror' `
+  -MirrorId generic-vacuum-statemachine-blueprint `
+  -BitbucketRepository 'rsna_nl/generic-vacuum-statemachine-blueprint' `
+  -GitHubRepository 'RSNANL/generic-vacuum-statemachine-blueprint-mirror' `
   -WorkerBaseUrl 'https://<worker>.<subdomain>.workers.dev'
 ```
 

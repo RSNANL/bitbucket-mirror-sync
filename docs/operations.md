@@ -8,6 +8,19 @@ All provider-changing operations require an active management session created wi
 
 A new PowerShell process must authenticate again. See `authentication.md`.
 
+## Deploy the Worker
+
+`Deploy-MirrorWorker.ps1` is planning-only unless `-Apply` is supplied. It deploys the current Worker source and mirror configuration directly through the active Cloudflare OAuth session, preserves existing Worker secrets and enables the configured `workers.dev` route.
+
+The first deployment also receives the dedicated dispatch GitHub App client ID, installation ID and downloaded private-key path. The IDs are written to non-secret configuration; the private key is written only to the encrypted `GITHUB_APP_PRIVATE_KEY` Worker binding. Later source/config deployments preserve that binding and do not require the private-key file.
+
+```powershell
+./tools/Deploy-MirrorWorker.ps1 @parameters
+./tools/Deploy-MirrorWorker.ps1 @parameters -Apply
+```
+
+Worker deployment never commits, pushes, provisions a mirror or dispatches a workflow.
+
 ## Validate a mirror
 
 `Test-Mirror.ps1` checks provider repositories, managed deploy keys, the active Bitbucket webhook and required GitHub Environment secret names. `-Dispatch` submits the generic mirror workflow. Secret values remain unreadable by design.

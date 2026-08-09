@@ -107,7 +107,17 @@ export function validateConfig(config) {
 
   try {
     assertObject(config.dispatch, "dispatch");
-    assertExactKeys(config.dispatch, ["github_repository", "workflow_file", "ref"], "dispatch");
+    assertExactKeys(
+      config.dispatch,
+      [
+        "github_repository",
+        "workflow_file",
+        "ref",
+        "github_app_client_id",
+        "github_app_installation_id"
+      ],
+      "dispatch"
+    );
     if (typeof config.dispatch.github_repository !== "string" || !REPOSITORY_PATTERN.test(config.dispatch.github_repository)) {
       fail("dispatch.github_repository must use owner/repository notation.");
     }
@@ -117,6 +127,30 @@ export function validateConfig(config) {
     if (typeof config.dispatch.ref !== "string" || config.dispatch.ref.length === 0) {
       fail("dispatch.ref must be a non-empty Git ref.");
     }
+    if (
+      config.dispatch.github_app_client_id !== null &&
+      (
+        typeof config.dispatch.github_app_client_id !== "string" ||
+        !/^[A-Za-z0-9_-]+$/.test(config.dispatch.github_app_client_id)
+      )
+    ) {
+      fail("dispatch.github_app_client_id must be null or a GitHub App client ID.");
+    }
+    if (
+      config.dispatch.github_app_installation_id !== null &&
+      (
+        !Number.isSafeInteger(config.dispatch.github_app_installation_id) ||
+        config.dispatch.github_app_installation_id < 1
+      )
+    ) {
+      fail("dispatch.github_app_installation_id must be null or a positive integer.");
+    }
+    if (
+      (config.dispatch.github_app_client_id === null) !==
+      (config.dispatch.github_app_installation_id === null)
+    ) {
+      fail("GitHub App client and installation IDs must either both be configured or both be null.");
+    }
   } catch (error) {
     fail(error.message);
   }
@@ -124,6 +158,15 @@ export function validateConfig(config) {
   if (!Array.isArray(config.mirrors)) {
     fail("mirrors must be an array.");
     return errors;
+  }
+  if (
+    config.mirrors.length > 0 &&
+    (
+      config.dispatch.github_app_client_id === null ||
+      config.dispatch.github_app_installation_id === null
+    )
+  ) {
+    fail("GitHub App dispatch identifiers must be configured before enabling a mirror.");
   }
 
   const ids = new Set();

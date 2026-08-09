@@ -15,6 +15,7 @@ Bitbucket push
   -> repository webhook
   -> Cloudflare Worker
   -> HMAC + repository + event validation
+  -> repository-scoped GitHub App installation token
   -> generic GitHub Actions workflow dispatch
   -> temporary GitHub-hosted runner
   -> read-only fetch from Bitbucket
@@ -42,6 +43,7 @@ A management session cannot silently reuse a locally stored provider account tok
 - Bitbucket owns authoritative source code and history.
 - The infrastructure repository owns mirror registration, generic workflow, Worker source and management tooling.
 - Cloudflare Worker owns webhook authentication and workflow dispatch.
+- A dedicated GitHub App owns the unattended, repository-scoped dispatch identity.
 - GitHub Actions owns the transient Git synchronization execution.
 - Provider secret stores own persistent repository-scoped runtime secrets.
 - The operator owns explicit initiation and approval of every management authentication session.
