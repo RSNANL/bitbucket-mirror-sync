@@ -139,6 +139,18 @@ function ConvertFrom-QueryString {
     return $result
 }
 
+function Get-OptionalPropertyValue {
+    param(
+        [AllowNull()][object]$Object,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    if ($null -eq $Object) { return $null }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
 function Open-ProviderAuthorization {
     param([Parameter(Mandatory)][string]$Uri)
     Write-Host "Opening provider authorization in your browser..."
@@ -291,47 +303,61 @@ function Connect-GitHubSession {
 
     $clientId = [string]$Configuration.github.client_id
     $device = Invoke-RestMethod -Method POST -Uri 'https://github.com/login/device/code' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{ client_id = $clientId }
-    if (-not $device.device_code -or -not $device.user_code -or -not $device.verification_uri) {
+    $deviceCode = [string](Get-OptionalPropertyValue -Object $device -Name 'device_code')
+    $userCode = [string](Get-OptionalPropertyValue -Object $device -Name 'user_code')
+    $verificationUri = [string](Get-OptionalPropertyValue -Object $device -Name 'verification_uri')
+    $expiresIn = Get-OptionalPropertyValue -Object $device -Name 'expires_in'
+    $pollInterval = Get-OptionalPropertyValue -Object $device -Name 'interval'
+
+    if (-not $deviceCode -or -not $userCode -or -not $verificationUri -or $null -eq $expiresIn) {
         throw 'GitHub did not return a complete device authorization response.'
     }
 
-    Write-Host "GitHub device code: $($device.user_code)"
-    Write-Host "Authorize at: $($device.verification_uri)"
-    Open-ProviderAuthorization -Uri ([string]$device.verification_uri)
+    Write-Host "GitHub device code: $userCode"
+    Write-Host "Authorize at: $verificationUri"
+    Open-ProviderAuthorization -Uri $verificationUri
 
-    $interval = [Math]::Max([int]$device.interval, 5)
-    $deadline = [DateTimeOffset]::UtcNow.AddSeconds([int]$device.expires_in)
+    $interval = if ($null -eq $pollInterval) { 5 } else { [Math]::Max([int]$pollInterval, 5) }
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds([int]$expiresIn)
     $tokenResponse = $null
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
         Start-Sleep -Seconds $interval
         $response = Invoke-RestMethod -Method POST -Uri 'https://github.com/login/oauth/access_token' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
             client_id = $clientId
-            device_code = [string]$device.device_code
+            device_code = $deviceCode
             grant_type = 'urn:ietf:params:oauth:grant-type:device_code'
         }
 
-        if ($response.access_token) {
+        $accessToken = [string](Get-OptionalPropertyValue -Object $response -Name 'access_token')
+        if ($accessToken) {
             $tokenResponse = $response
             break
         }
-        switch ([string]$response.error) {
+
+        $errorCode = [string](Get-OptionalPropertyValue -Object $response -Name 'error')
+        $errorDescription = [string](Get-OptionalPropertyValue -Object $response -Name 'error_description')
+        switch ($errorCode) {
             'authorization_pending' { continue }
             'slow_down' { $interval += 5; continue }
             'access_denied' { throw 'GitHub authorization was denied.' }
             'expired_token' { throw 'GitHub device authorization expired.' }
-            default { throw "GitHub device authorization failed: $($response.error) $($response.error_description)" }
+            default {
+                $detail = if ($errorDescription) { "$errorCode - $errorDescription" } elseif ($errorCode) { $errorCode } else { 'unexpected response' }
+                throw "GitHub device authorization failed: $detail"
+            }
         }
     }
 
-    if (-not $tokenResponse -or -not $tokenResponse.access_token) {
+    $token = [string](Get-OptionalPropertyValue -Object $tokenResponse -Name 'access_token')
+    if (-not $token) {
         throw 'GitHub device authorization timed out.'
     }
-    if (-not $tokenResponse.expires_in) {
+    $tokenExpiresIn = Get-OptionalPropertyValue -Object $tokenResponse -Name 'expires_in'
+    if ($null -eq $tokenExpiresIn) {
         throw 'GitHub returned a non-expiring user access token. Enable expiring user access tokens on the management GitHub App before continuing.'
     }
 
-    $token = [string]$tokenResponse.access_token
-    $expiresAt = [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenResponse.expires_in).ToString('o')
+    $expiresAt = [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenExpiresIn).ToString('o')
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_GITHUB_TOKEN', $token, 'Process')
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_GITHUB_EXPIRES_AT', $expiresAt, 'Process')
     [Environment]::SetEnvironmentVariable('GH_TOKEN', $token, 'Process')
@@ -376,13 +402,14 @@ function Connect-CloudflareSession {
         code = $code
         code_verifier = $pkce.Verifier
     }
-    if (-not $tokenResponse.access_token) { throw 'Cloudflare did not return an access token.' }
+    $token = [string](Get-OptionalPropertyValue -Object $tokenResponse -Name 'access_token')
+    if (-not $token) { throw 'Cloudflare did not return an access token.' }
 
-    $token = [string]$tokenResponse.access_token
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_TOKEN', $token, 'Process')
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_ACCOUNT_ID', $accountId, 'Process')
-    if ($tokenResponse.expires_in) {
-        [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_EXPIRES_AT', [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenResponse.expires_in).ToString('o'), 'Process')
+    $tokenExpiresIn = Get-OptionalPropertyValue -Object $tokenResponse -Name 'expires_in'
+    if ($null -ne $tokenExpiresIn) {
+        [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_EXPIRES_AT', [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenExpiresIn).ToString('o'), 'Process')
     }
 
     $tokenResponse = $null
@@ -422,12 +449,13 @@ function Connect-BitbucketSession {
             grant_type = 'authorization_code'
             code = $code
         }
-        if (-not $tokenResponse.access_token) { throw 'Bitbucket did not return an access token.' }
+        $token = [string](Get-OptionalPropertyValue -Object $tokenResponse -Name 'access_token')
+        if (-not $token) { throw 'Bitbucket did not return an access token.' }
 
-        $token = [string]$tokenResponse.access_token
         [Environment]::SetEnvironmentVariable('MIRROR_SESSION_BITBUCKET_TOKEN', $token, 'Process')
-        if ($tokenResponse.expires_in) {
-            [Environment]::SetEnvironmentVariable('MIRROR_SESSION_BITBUCKET_EXPIRES_AT', [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenResponse.expires_in).ToString('o'), 'Process')
+        $tokenExpiresIn = Get-OptionalPropertyValue -Object $tokenResponse -Name 'expires_in'
+        if ($null -ne $tokenExpiresIn) {
+            [Environment]::SetEnvironmentVariable('MIRROR_SESSION_BITBUCKET_EXPIRES_AT', [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenExpiresIn).ToString('o'), 'Process')
         }
 
         $tokenResponse = $null
