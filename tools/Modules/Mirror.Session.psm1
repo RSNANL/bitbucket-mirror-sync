@@ -2,6 +2,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Mirror.Common.psm1') -Force
 
+$script:CloudflareRedirectUri = 'http://127.0.0.1:53682/callback'
+$script:CloudflareOAuthScopes = @('workers-scripts.edit')
+$script:BitbucketRedirectUri = 'http://127.0.0.1:53683/callback'
+
 $script:SessionVariables = @(
     'MIRROR_SESSION_GITHUB_TOKEN',
     'MIRROR_SESSION_GITHUB_EXPIRES_AT',
@@ -32,19 +36,6 @@ function Get-MirrorAuthenticationConfiguration {
     return $config
 }
 
-function Test-LoopbackRedirectUri {
-    param([Parameter(Mandatory)][string]$RedirectUri)
-
-    try { $uri = [Uri]$RedirectUri }
-    catch { return $false }
-
-    if ($uri.Scheme -ne 'http') { return $false }
-    if ($uri.Host -ne '127.0.0.1') { return $false }
-    if ($uri.IsDefaultPort -or $uri.Port -lt 1024 -or $uri.Port -gt 65535) { return $false }
-    if ([string]::IsNullOrWhiteSpace($uri.AbsolutePath) -or $uri.AbsolutePath -eq '/') { return $false }
-    return $true
-}
-
 function Test-MirrorAuthenticationConfiguration {
     param(
         [string]$ConfigPath = 'config/authentication.json',
@@ -58,15 +49,6 @@ function Test-MirrorAuthenticationConfiguration {
         }
     }
 
-    if (-not (Test-LoopbackRedirectUri -RedirectUri ([string]$config.cloudflare.redirect_uri))) {
-        throw 'cloudflare.redirect_uri must be an HTTP loopback URI with an explicit high port and callback path.'
-    }
-    if (-not (Test-LoopbackRedirectUri -RedirectUri ([string]$config.bitbucket.redirect_uri))) {
-        throw 'bitbucket.redirect_uri must be an HTTP loopback URI with an explicit high port and callback path.'
-    }
-    if ($null -eq $config.cloudflare.scopes -or $config.cloudflare.scopes -isnot [System.Array]) {
-        throw 'cloudflare.scopes must be an array.'
-    }
     if ($config.cloudflare.account_id -and ([string]$config.cloudflare.account_id -notmatch '^[A-Fa-f0-9]{32}$')) {
         throw 'cloudflare.account_id must be a 32-character hexadecimal identifier.'
     }
@@ -80,9 +62,6 @@ function Test-MirrorAuthenticationConfiguration {
         }
         if ([string]::IsNullOrWhiteSpace([string]$config.cloudflare.account_id)) {
             throw 'cloudflare.account_id is not configured.'
-        }
-        if (@($config.cloudflare.scopes).Count -eq 0) {
-            throw 'cloudflare.scopes is not configured.'
         }
         if ([string]::IsNullOrWhiteSpace([string]$config.bitbucket.client_id)) {
             throw 'bitbucket.client_id is not configured.'
@@ -151,9 +130,41 @@ function Get-OptionalPropertyValue {
     return $property.Value
 }
 
+function Get-HttpFailureDetail {
+    param([Parameter(Mandatory)][object]$ErrorRecord)
+
+    $statusCode = $null
+    $body = $null
+    $response = $ErrorRecord.Exception.Response
+    if ($null -ne $response) {
+        if ($null -ne $response.StatusCode) { $statusCode = [int]$response.StatusCode }
+        try {
+            if ($null -ne $response.Content) {
+                $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            }
+        }
+        catch { }
+    }
+
+    $parts = @()
+    if ($null -ne $statusCode) { $parts += "HTTP $statusCode" }
+    if ($body) {
+        try {
+            $parsed = $body | ConvertFrom-Json
+            $oauthError = [string](Get-OptionalPropertyValue -Object $parsed -Name 'error')
+            $oauthDescription = [string](Get-OptionalPropertyValue -Object $parsed -Name 'error_description')
+            if ($oauthDescription) { $parts += $oauthDescription }
+            elseif ($oauthError) { $parts += $oauthError }
+        }
+        catch { }
+    }
+    if ($parts.Count -eq 0) { $parts += $ErrorRecord.Exception.Message }
+    return $parts -join ': '
+}
+
 function Open-ProviderAuthorization {
     param([Parameter(Mandatory)][string]$Uri)
-    Write-Host "Opening provider authorization in your browser..."
+    Write-Host 'Opening provider authorization in your browser...'
     Start-Process $Uri
 }
 
@@ -349,17 +360,14 @@ function Connect-GitHubSession {
     }
 
     $token = [string](Get-OptionalPropertyValue -Object $tokenResponse -Name 'access_token')
-    if (-not $token) {
-        throw 'GitHub device authorization timed out.'
-    }
+    if (-not $token) { throw 'GitHub device authorization timed out.' }
     $tokenExpiresIn = Get-OptionalPropertyValue -Object $tokenResponse -Name 'expires_in'
     if ($null -eq $tokenExpiresIn) {
         throw 'GitHub returned a non-expiring user access token. Enable expiring user access tokens on the management GitHub App before continuing.'
     }
 
-    $expiresAt = [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenExpiresIn).ToString('o')
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_GITHUB_TOKEN', $token, 'Process')
-    [Environment]::SetEnvironmentVariable('MIRROR_SESSION_GITHUB_EXPIRES_AT', $expiresAt, 'Process')
+    [Environment]::SetEnvironmentVariable('MIRROR_SESSION_GITHUB_EXPIRES_AT', [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenExpiresIn).ToString('o'), 'Process')
     [Environment]::SetEnvironmentVariable('GH_TOKEN', $token, 'Process')
 
     $tokenResponse = $null
@@ -377,33 +385,36 @@ function Connect-CloudflareSession {
 
     $clientId = [string]$Configuration.cloudflare.client_id
     $accountId = [string]$Configuration.cloudflare.account_id
-    $redirectUri = [string]$Configuration.cloudflare.redirect_uri
     $state = New-RandomBase64Url
     $pkce = New-PkceValues
-
-    $authorizationValues = [ordered]@{
+    $authorizationUri = 'https://dash.cloudflare.com/oauth2/auth?' + (ConvertTo-QueryString -Values ([ordered]@{
         response_type = 'code'
         client_id = $clientId
-        redirect_uri = $redirectUri
+        redirect_uri = $script:CloudflareRedirectUri
         state = $state
         code_challenge = $pkce.Challenge
         code_challenge_method = 'S256'
-    }
-    $scopes = @($Configuration.cloudflare.scopes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-    if ($scopes.Count -gt 0) { $authorizationValues['scope'] = $scopes -join ' ' }
+        scope = $script:CloudflareOAuthScopes -join ' '
+    }))
 
-    $authorizationUri = 'https://dash.cloudflare.com/oauth2/auth?' + (ConvertTo-QueryString -Values $authorizationValues)
-    $code = Receive-LoopbackOAuthCode -RedirectUri $redirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
-
+    $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
     $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://dash.cloudflare.com/oauth2/token' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
         grant_type = 'authorization_code'
         client_id = $clientId
-        redirect_uri = $redirectUri
+        redirect_uri = $script:CloudflareRedirectUri
         code = $code
         code_verifier = $pkce.Verifier
     }
     $token = [string](Get-OptionalPropertyValue -Object $tokenResponse -Name 'access_token')
     if (-not $token) { throw 'Cloudflare did not return an access token.' }
+
+    try {
+        [void](Invoke-RestMethod -Method GET -Uri 'https://dash.cloudflare.com/oauth2/userinfo' -Headers @{ Authorization = "Bearer $token"; Accept = 'application/json' })
+    }
+    catch {
+        $detail = Get-HttpFailureDetail -ErrorRecord $_
+        throw "Cloudflare OAuth token validation failed: $detail"
+    }
 
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_TOKEN', $token, 'Process')
     [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_ACCOUNT_ID', $accountId, 'Process')
@@ -411,13 +422,8 @@ function Connect-CloudflareSession {
     if ($null -ne $tokenExpiresIn) {
         [Environment]::SetEnvironmentVariable('MIRROR_SESSION_CLOUDFLARE_EXPIRES_AT', [DateTimeOffset]::UtcNow.AddSeconds([int]$tokenExpiresIn).ToString('o'), 'Process')
     }
-
     $tokenResponse = $null
-    $response = Invoke-RestMethod -Method GET -Uri "https://api.cloudflare.com/client/v4/accounts/$accountId/workers/scripts" -Headers @{ Authorization = "Bearer $token"; Accept = 'application/json' }
-    if ($response.PSObject.Properties.Name -contains 'success' -and -not $response.success) {
-        throw 'Cloudflare session token does not have the required access to the configured account.'
-    }
-    Write-Host 'Cloudflare authenticated for this process.'
+    Write-Host 'Cloudflare OAuth authenticated for this process.'
 }
 
 function Connect-BitbucketSession {
@@ -428,7 +434,6 @@ function Connect-BitbucketSession {
     }
 
     $clientId = [string]$Configuration.bitbucket.client_id
-    $redirectUri = [string]$Configuration.bitbucket.redirect_uri
     $secureSecret = Read-Host -Prompt 'Bitbucket OAuth consumer secret (used only in this process)' -AsSecureString
     $clientSecret = ConvertFrom-SecureStringPlainText -SecureString $secureSecret
     $secureSecret = $null
@@ -441,7 +446,7 @@ function Connect-BitbucketSession {
             response_type = 'code'
             state = $state
         }))
-        $code = Receive-LoopbackOAuthCode -RedirectUri $redirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
+        $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
 
         $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${clientId}:$clientSecret")
         $basic = [Convert]::ToBase64String($credentialBytes)

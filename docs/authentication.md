@@ -10,6 +10,16 @@ A new PowerShell process therefore requires a new interactive authorization.
 
 Provider browser sessions remain provider-owned. The tooling always starts a new authorization transaction, but the provider decides whether an already authenticated browser session requires password or multi-factor authentication again.
 
+## Authentication configuration
+
+`config/authentication.json` contains only installation-specific, non-secret provider identifiers:
+
+- GitHub App client ID;
+- Cloudflare OAuth client ID and account ID;
+- Bitbucket OAuth client ID.
+
+Provider callback URIs and requested OAuth scopes are implementation contracts and are deliberately not user-configurable. Changing them requires a code change and review rather than an operator configuration edit.
+
 ## GitHub
 
 Management access uses a GitHub App user access token obtained through Device Flow.
@@ -35,23 +45,29 @@ The OAuth client is created once under the intended Cloudflare account and remai
 - use response type `code`;
 - use token endpoint authentication method `none`;
 - use PKCE `S256`;
-- allow the configured loopback redirect URI;
+- allow `http://127.0.0.1:53682/callback`;
 - be limited to the intended Cloudflare account;
-- request only `Workers Scripts Write`.
+- allow the `Workers Editor` OAuth scope (`workers-scripts.edit`).
 
-Only the client ID, account ID and loopback redirect URI are stored in `config/authentication.json`. No Cloudflare API token or OAuth client secret is used by management tooling. The access token exists only in the current PowerShell process. Disconnect performs a best-effort call to Cloudflare's OAuth revoke endpoint before clearing the local token.
+The callback URI and requested scope are fixed by the management implementation. Only the client ID and account ID are stored in `config/authentication.json`.
+
+Cloudflare authentication is validated in two distinct layers. Session establishment validates the issued OAuth access token against Cloudflare's OAuth `userinfo` endpoint. Workers API capability is validated separately through `Test-CloudflareAuthentication` / `Test-Prerequisites.ps1`. This separation prevents an OAuth-client or token problem from being conflated with a Workers API permission mapping problem.
+
+No Cloudflare API token or OAuth client secret is used by management tooling. The access token exists only in the current PowerShell process. Disconnect performs a best-effort call to Cloudflare's OAuth revoke endpoint before clearing the local token.
 
 ## Bitbucket
 
-Management access uses the OAuth 2.0 Authorization Code flow from a workspace OAuth consumer.
+Management access uses the OAuth 2.0 Authorization Code flow from a workspace OAuth client.
 
-The consumer is created once in the Bitbucket workspace that owns the managed source repositories. Its callback URL must equal the configured loopback redirect URI and it must request only:
+The client is created once in the Bitbucket workspace that owns the managed source repositories. Its callback URL must be `http://127.0.0.1:53683/callback` and it must request only:
 
 - `repository`;
 - `repository:admin`;
 - `webhook`.
 
-Bitbucket requires the OAuth consumer secret when the authorization code is exchanged. The operator retrieves that provider-held value and enters it through a secure prompt during every management session. The tooling never writes it to configuration, environment variables, a keyring or Git. The returned access token is retained only in the PowerShell process. The refresh token is discarded; when the access token expires a new interactive authorization is required.
+The callback URI is fixed by the management implementation and is not user-configurable.
+
+Bitbucket requires the OAuth client secret when the authorization code is exchanged. The operator retrieves that provider-held value and enters it through a secure prompt during every management session. The tooling never writes it to configuration, environment variables, a keyring or Git. The returned access token is retained only in the PowerShell process. The refresh token is discarded; when the access token expires a new interactive authorization is required.
 
 ## Persistent operational secrets
 

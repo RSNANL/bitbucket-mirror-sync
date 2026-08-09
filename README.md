@@ -22,7 +22,7 @@ Configuration-driven infrastructure for disposable GitHub mirrors of authoritati
 config/
   mirrors.json              Non-secret mirror registry.
   mirrors.schema.json       Mirror configuration contract.
-  authentication.json       Non-secret management authentication identifiers.
+  authentication.json       Non-secret provider identifiers only.
 scripts/
   config-lib.mjs            Mirror configuration validation and derived names.
   mirror.sh                 Generic branches-and-tags mirror runtime.
@@ -61,7 +61,7 @@ End the session explicitly or close PowerShell:
 ./tools/Disconnect-MirrorSession.ps1
 ```
 
-See `docs/authentication.md` for the provider application registrations and exact session boundary.
+See `docs/authentication.md` for the provider application registrations and exact session boundary. OAuth callback URIs and requested scopes are implementation contracts and are not operator configuration.
 
 ## Derived resource names
 

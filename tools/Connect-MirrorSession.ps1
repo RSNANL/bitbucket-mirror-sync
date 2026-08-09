@@ -26,16 +26,6 @@ Disconnect-MirrorSession -ConfigPath $AuthenticationConfigPath
 [void](Test-MirrorAuthenticationConfiguration -ConfigPath $AuthenticationConfigPath -RequireConfigured)
 $config = Get-MirrorAuthenticationConfiguration -ConfigPath $AuthenticationConfigPath
 
-$cloudflareScopes = @(
-    $config.cloudflare.scopes |
-        ForEach-Object { [string]$_ } |
-        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-)
-$requiredCloudflareScope = 'workers-scripts.write'
-if ($cloudflareScopes.Count -ne 1 -or $cloudflareScopes[0] -ne $requiredCloudflareScope) {
-    throw "Cloudflare management OAuth must request exactly '$requiredCloudflareScope'. Configure only Workers Scripts -> Write on the Cloudflare OAuth client and set cloudflare.scopes to ['$requiredCloudflareScope']."
-}
-
 try {
     Write-Host 'Starting GitHub interactive authorization...'
     Connect-GitHubSession -Configuration $config

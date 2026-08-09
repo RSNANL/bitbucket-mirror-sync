@@ -33,6 +33,24 @@ function Get-CloudflareWorkerName {
     return $workerName
 }
 
+function Get-CloudflareErrorMessage {
+    param([AllowNull()][string]$ResponseBody)
+
+    if ([string]::IsNullOrWhiteSpace($ResponseBody)) { return $null }
+    try {
+        $parsed = $ResponseBody | ConvertFrom-Json
+        $errors = @($parsed.errors)
+        if ($errors.Count -gt 0) {
+            return ($errors | ForEach-Object {
+                $code = if ($null -ne $_.code) { "[$($_.code)] " } else { '' }
+                "$code$($_.message)"
+            }) -join '; '
+        }
+    }
+    catch { }
+    return $null
+}
+
 function Invoke-CloudflareApi {
     param(
         [Parameter(Mandatory)][ValidateSet('GET','POST','PUT','PATCH','DELETE')][string]$Method,
@@ -58,22 +76,36 @@ function Invoke-CloudflareApi {
             $parameters['ContentType'] = 'application/json'
             $parameters['Body'] = ($Body | ConvertTo-Json -Depth 20 -Compress)
         }
-
         $response = Invoke-RestMethod @parameters
-        if ($response.PSObject.Properties.Name -contains 'success' -and -not $response.success) {
-            $messages = @($response.errors | ForEach-Object { $_.message }) -join '; '
-            throw "Cloudflare API request failed: $messages"
-        }
-        return $response
     }
     catch {
         $statusCode = $null
-        if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
-            $statusCode = [int]$_.Exception.Response.StatusCode
+        $responseBody = $null
+        if ($null -ne $_.Exception.Response) {
+            if ($null -ne $_.Exception.Response.StatusCode) { $statusCode = [int]$_.Exception.Response.StatusCode }
+            try {
+                if ($null -ne $_.Exception.Response.Content) {
+                    $responseBody = $_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                }
+            }
+            catch { }
         }
+
         if ($AllowMissing -and $statusCode -eq 404) { return $null }
-        throw
+        $providerMessage = Get-CloudflareErrorMessage -ResponseBody $responseBody
+        $statusText = if ($null -ne $statusCode) { "HTTP $statusCode" } else { 'transport failure' }
+        $detail = if ($providerMessage) { $providerMessage } else { $_.Exception.Message }
+        throw "Cloudflare API request failed ($statusText, $Method $Path): $detail"
     }
+
+    if ($response.PSObject.Properties.Name -contains 'success' -and -not $response.success) {
+        $messages = @($response.errors | ForEach-Object {
+            $code = if ($null -ne $_.code) { "[$($_.code)] " } else { '' }
+            "$code$($_.message)"
+        }) -join '; '
+        throw "Cloudflare API request failed ($Method $Path): $messages"
+    }
+    return $response
 }
 
 function Test-CloudflareAuthentication {
