@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RSNANL/bitbucket-mirror-sync/config/mirrors.schema.json",
+  "title": "Bitbucket to GitHub mirror configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "worker",
+    "dispatch",
+    "mirrors"
+  ],
+  "properties": {
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_url",
+        "path_prefix"
+      ],
+      "properties": {
+        "base_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "path_prefix": {
+          "type": "string",
+          "pattern": "^/[a-z0-9/_-]*[a-z0-9_-]$"
+        }
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "github_repository",
+        "workflow_file",
+        "ref"
+      ],
+      "properties": {
+        "github_repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "workflow_file": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+\\.ya?ml$"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      }
+    },
+    "mirrors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mirror"
+      }
+    }
+  },
+  "$defs": {
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+      "maxLength": 200
+    },
+    "mirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "enabled",
+        "bitbucket_repository",
+        "github_repository",
+        "scheduled_recovery"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 48
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "bitbucket_repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "github_repository": {
+          "$ref": "#/$defs/repository"
+        },
+        "scheduled_recovery": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

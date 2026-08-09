@@ -1,0 +1,21 @@
+# Local provisioning state and credentials
+.mirror-state/
+*.private
+*.key
+*.pem
+
+# Node and Worker output
+node_modules/
+worker/.wrangler/
+worker/coverage/
+worker/dist/
+
+# Test output
+.tmp/
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

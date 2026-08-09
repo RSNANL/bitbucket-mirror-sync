@@ -1,0 +1,7 @@
+{
+  "id": "roomba-automation",
+  "enabled": true,
+  "bitbucket_repository": "REPLACE_WORKSPACE/REPLACE_REPOSITORY",
+  "github_repository": "RSNANL/roomba-automation-mirror",
+  "scheduled_recovery": false
+}

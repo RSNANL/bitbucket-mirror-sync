@@ -1,0 +1,58 @@
+name: Mirror configured repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      mirror_id:
+        description: Configured mirror identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve mirror configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mirror_id: ${{ steps.resolve.outputs.mirror_id }}
+      source_repository: ${{ steps.resolve.outputs.source_repository }}
+      target_repository: ${{ steps.resolve.outputs.target_repository }}
+      environment_name: ${{ steps.resolve.outputs.environment_name }}
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v6
+
+      - name: Validate mirror configuration
+        run: node scripts/validate-config.mjs
+
+      - name: Resolve requested mirror
+        id: resolve
+        run: node scripts/resolve-mirror.mjs --id "${{ inputs.mirror_id }}"
+
+  mirror:
+    name: Sync branches and tags
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ needs.resolve.outputs.environment_name }}
+    concurrency:
+      group: mirror-${{ needs.resolve.outputs.mirror_id }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v6
+
+      - name: Mirror configured repository
+        env:
+          BBT_MIRROR_SSH_KEY: ${{ secrets.BBT_MIRROR_SSH_KEY }}
+          GHB_MIRROR_SSH_KEY: ${{ secrets.GHB_MIRROR_SSH_KEY }}
+        run: |
+          scripts/mirror.sh \
+            --mirror-id "${{ needs.resolve.outputs.mirror_id }}" \
+            --source-repository "${{ needs.resolve.outputs.source_repository }}" \
+            --target-repository "${{ needs.resolve.outputs.target_repository }}"

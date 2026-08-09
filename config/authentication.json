@@ -1,0 +1,15 @@
+{
+  "github": {
+    "client_id": null
+  },
+  "cloudflare": {
+    "client_id": null,
+    "account_id": null,
+    "redirect_uri": "http://127.0.0.1:53682/callback",
+    "scopes": []
+  },
+  "bitbucket": {
+    "client_id": null,
+    "redirect_uri": "http://127.0.0.1:53683/callback"
+  }
+}

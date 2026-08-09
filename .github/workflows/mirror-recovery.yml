@@ -1,0 +1,56 @@
+name: Recover configured mirrors
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve recovery matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      count: ${{ steps.resolve.outputs.count }}
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v6
+
+      - name: Validate mirror configuration
+        run: node scripts/validate-config.mjs
+
+      - name: Resolve enabled recovery mirrors
+        id: resolve
+        run: node scripts/resolve-recovery-matrix.mjs
+
+  mirror:
+    name: Recover ${{ matrix.mirror_id }}
+    needs: resolve
+    if: ${{ needs.resolve.outputs.count != '0' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ matrix.environment_name }}
+    concurrency:
+      group: mirror-${{ matrix.mirror_id }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v6
+
+      - name: Recover mirror
+        env:
+          BBT_MIRROR_SSH_KEY: ${{ secrets.BBT_MIRROR_SSH_KEY }}
+          GHB_MIRROR_SSH_KEY: ${{ secrets.GHB_MIRROR_SSH_KEY }}
+        run: |
+          scripts/mirror.sh \
+            --mirror-id "${{ matrix.mirror_id }}" \
+            --source-repository "${{ matrix.source_repository }}" \
+            --target-repository "${{ matrix.target_repository }}"
