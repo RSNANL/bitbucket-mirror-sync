@@ -1,0 +1,13 @@
+{
+  "name": "bitbucket-mirror-dispatch-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc -p jsconfig.json",
+    "validate": "npm run typecheck && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

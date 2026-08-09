@@ -1,0 +1,7 @@
+{
+  "id": "generic-vacuum-statemachine-blueprint",
+  "enabled": true,
+  "bitbucket_repository": "rsna_nl/generic-vacuum-statemachine-blueprint",
+  "github_repository": "RSNANL/generic-vacuum-statemachine-blueprint-mirror",
+  "scheduled_recovery": false
+}
