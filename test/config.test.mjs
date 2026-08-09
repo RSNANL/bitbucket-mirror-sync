@@ -172,10 +172,12 @@ test("recovery matrix selects only enabled mirrors with scheduled recovery", asy
   ];
   fs.writeFileSync(configPath, JSON.stringify(config));
   const { spawnSync } = await import("node:child_process");
+  const environment = { ...process.env };
+  delete environment.GITHUB_OUTPUT;
   const resolved = spawnSync(process.execPath, [
     "scripts/resolve-recovery-matrix.mjs",
     configPath
-  ], { cwd: path.resolve("."), encoding: "utf8" });
+  ], { cwd: path.resolve("."), encoding: "utf8", env: environment });
   assert.equal(resolved.status, 0, resolved.stderr);
   assert.deepEqual(JSON.parse(resolved.stdout), [{
     mirror_id: "scheduled",
