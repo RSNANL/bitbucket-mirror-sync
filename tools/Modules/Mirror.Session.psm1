@@ -36,6 +36,24 @@ function Get-MirrorAuthenticationConfiguration {
     return $config
 }
 
+function Assert-ExactConfigurationProperties {
+    param(
+        [Parameter(Mandatory)][object]$Object,
+        [Parameter(Mandatory)][string[]]$ExpectedProperties,
+        [Parameter(Mandatory)][string]$Label
+    )
+
+    $actualProperties = @($Object.PSObject.Properties.Name)
+    $missing = @($ExpectedProperties | Where-Object { $_ -notin $actualProperties })
+    $unexpected = @($actualProperties | Where-Object { $_ -notin $ExpectedProperties })
+    if ($missing.Count -gt 0) {
+        throw "$Label is missing field(s): $($missing -join ', ')."
+    }
+    if ($unexpected.Count -gt 0) {
+        throw "$Label contains unsupported field(s): $($unexpected -join ', ')."
+    }
+}
+
 function Test-MirrorAuthenticationConfiguration {
     param(
         [string]$ConfigPath = 'config/authentication.json',
@@ -43,13 +61,29 @@ function Test-MirrorAuthenticationConfiguration {
     )
 
     $config = Get-MirrorAuthenticationConfiguration -ConfigPath $ConfigPath
+    Assert-ExactConfigurationProperties -Object $config -ExpectedProperties @('github', 'cloudflare', 'bitbucket') -Label 'Authentication configuration'
     foreach ($provider in @('github', 'cloudflare', 'bitbucket')) {
-        if (-not ($config.PSObject.Properties.Name -contains $provider)) {
-            throw "Authentication configuration is missing provider: $provider"
+        if ($null -eq $config.$provider -or $config.$provider -is [Array]) {
+            throw "Authentication configuration provider must be an object: $provider"
+        }
+    }
+    Assert-ExactConfigurationProperties -Object $config.github -ExpectedProperties @('client_id') -Label 'github'
+    Assert-ExactConfigurationProperties -Object $config.cloudflare -ExpectedProperties @('client_id', 'account_id') -Label 'cloudflare'
+    Assert-ExactConfigurationProperties -Object $config.bitbucket -ExpectedProperties @('client_id') -Label 'bitbucket'
+
+    foreach ($clientId in @($config.github.client_id, $config.cloudflare.client_id, $config.bitbucket.client_id)) {
+        if ($null -ne $clientId -and ($clientId -isnot [string] -or [string]::IsNullOrWhiteSpace($clientId))) {
+            throw 'Authentication client IDs must be null or non-empty strings.'
         }
     }
 
-    if ($config.cloudflare.account_id -and ([string]$config.cloudflare.account_id -notmatch '^[A-Fa-f0-9]{32}$')) {
+    if (
+        $null -ne $config.cloudflare.account_id -and
+        (
+            $config.cloudflare.account_id -isnot [string] -or
+            ([string]$config.cloudflare.account_id) -notmatch '^[A-Fa-f0-9]{32}$'
+        )
+    ) {
         throw 'cloudflare.account_id must be a 32-character hexadecimal identifier.'
     }
 

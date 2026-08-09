@@ -25,7 +25,7 @@ function Invoke-GitHubApi {
         [Parameter(Mandatory)][ValidateSet('GET','POST','PUT','PATCH','DELETE')][string]$Method,
         [Parameter(Mandatory)][string]$Endpoint,
         [AllowNull()][object]$Body = $null,
-        [switch]$AllowFailure
+        [switch]$AllowMissing
     )
 
     [void](Get-GitHubSessionToken)
@@ -35,17 +35,19 @@ function Invoke-GitHubApi {
         $arguments += @('--input', '-')
         $inputText = $Body | ConvertTo-Json -Depth 20 -Compress
     }
-    $result = Invoke-ExternalCommand -FilePath (Resolve-ExternalCommand gh) -ArgumentList $arguments -InputText $inputText -AllowFailure:$AllowFailure
-    if ($result.ExitCode -ne 0) { return $null }
+    $result = Invoke-ExternalCommand -FilePath (Resolve-ExternalCommand gh) -ArgumentList $arguments -InputText $inputText -AllowFailure
+    if ($result.ExitCode -ne 0) {
+        if ($AllowMissing -and $result.StdErr -match '\bHTTP 404\b') { return $null }
+        $detail = if ($result.StdErr) { $result.StdErr } else { 'GitHub CLI returned no error detail.' }
+        throw "GitHub API request failed ($Method $Endpoint): $detail"
+    }
     if (-not $result.StdOut) { return $null }
     return $result.StdOut | ConvertFrom-Json -AsHashtable
 }
 
 function Get-GitHubRepository {
     param([Parameter(Mandatory)][string]$Repository, [switch]$AllowMissing)
-    $result = Invoke-GitHubApi -Method GET -Endpoint "repos/$Repository" -AllowFailure:$AllowMissing
-    if ($null -eq $result -and -not $AllowMissing) { throw "GitHub repository not found: $Repository" }
-    return $result
+    return Invoke-GitHubApi -Method GET -Endpoint "repos/$Repository" -AllowMissing:$AllowMissing
 }
 
 function New-GitHubMirrorRepository {
@@ -105,7 +107,7 @@ function Remove-GitHubEnvironment {
         [Parameter(Mandatory)][string]$EnvironmentName
     )
     $encoded = [Uri]::EscapeDataString($EnvironmentName)
-    [void](Invoke-GitHubApi -Method DELETE -Endpoint "repos/$InfrastructureRepository/environments/$encoded")
+    [void](Invoke-GitHubApi -Method DELETE -Endpoint "repos/$InfrastructureRepository/environments/$encoded" -AllowMissing)
 }
 
 function Set-GitHubEnvironmentSecret {

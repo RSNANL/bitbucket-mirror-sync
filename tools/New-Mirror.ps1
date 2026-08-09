@@ -27,11 +27,11 @@ if ($config.mirrors | Where-Object { $_.id -eq $MirrorId }) { throw "Mirror id a
 if ($config.mirrors | Where-Object { $_.bitbucket_repository -eq $BitbucketRepository }) { throw "Bitbucket source is already configured: $BitbucketRepository" }
 if ($config.mirrors | Where-Object { $_.github_repository -eq $GitHubRepository }) { throw "GitHub target is already configured: $GitHubRepository" }
 
-$effectiveWorkerBaseUrl = if ($WorkerBaseUrl) { $WorkerBaseUrl.TrimEnd('/') } else { $config.worker.base_url }
+$effectiveWorkerBaseUrl = if ($WorkerBaseUrl) { $WorkerBaseUrl } else { $config.worker.base_url }
 if (-not $effectiveWorkerBaseUrl) {
     throw 'WorkerBaseUrl is required until worker.base_url has been committed to config/mirrors.json.'
 }
-if ($effectiveWorkerBaseUrl -notmatch '^https://') { throw 'WorkerBaseUrl must use HTTPS.' }
+$effectiveWorkerBaseUrl = Resolve-WorkerBaseUrl -WorkerBaseUrl $effectiveWorkerBaseUrl
 
 $environmentName = Get-DerivedEnvironmentName -MirrorId $MirrorId
 $secretBinding = Get-DerivedWebhookSecretBinding -MirrorId $MirrorId

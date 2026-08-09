@@ -24,7 +24,8 @@
             "null"
           ],
           "format": "uri",
-          "pattern": "^https://"
+          "pattern": "^https://[^@/?#]+/?$",
+          "maxLength": 2048
         },
         "path_prefix": {
           "type": "string",
@@ -79,6 +80,28 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mirrors": {
+            "minItems": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "worker": {
+            "properties": {
+              "base_url": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "repository": {
       "type": "string",

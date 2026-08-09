@@ -20,6 +20,24 @@ source_url=""
 target_url=""
 dry_run=false
 
+write_verified_host_key() {
+  local host="$1"
+  local expected_fingerprint="$2"
+  local output_file="$3"
+  local actual_fingerprints
+
+  if ! ssh-keyscan -T 10 -t ed25519 "$host" > "$output_file" 2>/dev/null || [[ ! -s "$output_file" ]]; then
+    printf 'No Ed25519 SSH host key was received from %s.\n' "$host" >&2
+    return 1
+  fi
+  actual_fingerprints="$(ssh-keygen -lf "$output_file" -E sha256 | awk '{print $2}' | sort -u)"
+  if [[ "$actual_fingerprints" != "$expected_fingerprint" ]]; then
+    printf 'SSH host key verification failed for %s.\n' "$host" >&2
+    printf 'Expected: %s\nReceived: %s\n' "$expected_fingerprint" "$actual_fingerprints" >&2
+    return 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mirror-id) mirror_id="${2:-}"; shift 2 ;;
@@ -74,7 +92,15 @@ if [[ -n "$source_repository" ]]; then
   printf '%s\n' "$GHB_MIRROR_SSH_KEY" > "$ssh_dir/github_target"
   chmod 600 "$ssh_dir/bitbucket_source" "$ssh_dir/github_target"
 
-  ssh-keyscan -H bitbucket.org github.com > "$ssh_dir/known_hosts" 2>/dev/null
+  write_verified_host_key \
+    bitbucket.org \
+    'SHA256:ybgmFkzwOSotHTHLJgHO0QN8L0xErw6vd0VhFA9m3SM' \
+    "$ssh_dir/bitbucket_known_hosts"
+  write_verified_host_key \
+    github.com \
+    'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU' \
+    "$ssh_dir/github_known_hosts"
+  cat "$ssh_dir/bitbucket_known_hosts" "$ssh_dir/github_known_hosts" > "$ssh_dir/known_hosts"
   chmod 644 "$ssh_dir/known_hosts"
 
   cat > "$ssh_dir/config" <<EOF

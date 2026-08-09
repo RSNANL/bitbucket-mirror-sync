@@ -20,16 +20,19 @@ if (-not $config.worker.base_url) { throw 'worker.base_url is not configured.' }
 $environmentName = Get-DerivedEnvironmentName -MirrorId $MirrorId
 $secretBinding = Get-DerivedWebhookSecretBinding -MirrorId $MirrorId
 $bitbucketCredentials = Get-BitbucketCredentials
+$repairAction = if ($RepairWebhook) {
+    'Repair mirror repository, credentials and webhook'
+} else {
+    'Repair mirror repository and credentials'
+}
+
+if (-not $PSCmdlet.ShouldProcess($MirrorId, $repairAction)) { return }
 
 try {
     if ($null -eq (Get-GitHubRepository -Repository $mirror.github_repository -AllowMissing)) {
-        if ($PSCmdlet.ShouldProcess($mirror.github_repository, 'Recreate private GitHub mirror repository')) {
-            [void](New-GitHubMirrorRepository -Repository $mirror.github_repository)
-        }
+        [void](New-GitHubMirrorRepository -Repository $mirror.github_repository)
     }
-    if ($PSCmdlet.ShouldProcess($environmentName, 'Ensure GitHub environment exists')) {
-        [void](New-GitHubEnvironment -InfrastructureRepository $config.dispatch.github_repository -EnvironmentName $environmentName)
-    }
+    [void](New-GitHubEnvironment -InfrastructureRepository $config.dispatch.github_repository -EnvironmentName $environmentName)
 
     & (Join-Path $PSScriptRoot 'Rotate-MirrorKeys.ps1') -MirrorId $MirrorId -Phase Prepare -ConfigPath $ConfigPath -Confirm:$false
 

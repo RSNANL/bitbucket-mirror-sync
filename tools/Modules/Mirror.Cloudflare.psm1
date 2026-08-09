@@ -280,7 +280,7 @@ function Remove-CloudflareWorkerSecret {
     $credentials = Get-CloudflareCredentials
     $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
     $encodedSecretName = [Uri]::EscapeDataString($SecretName)
-    [void](Invoke-CloudflareApi -Method DELETE -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/secrets/$encodedSecretName")
+    [void](Invoke-CloudflareApi -Method DELETE -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/secrets/$encodedSecretName" -AllowMissing)
 }
 
 Export-ModuleMember -Function Get-CloudflareCredentials, Get-CloudflareWorkerName, Invoke-CloudflareApi, Test-CloudflareAuthentication, Get-CloudflareWorkerSecrets, Test-CloudflareWorkerDeployment, Assert-CloudflareWorkerReady, Publish-CloudflareWorker, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret

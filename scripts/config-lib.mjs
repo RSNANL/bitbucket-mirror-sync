@@ -5,6 +5,10 @@ const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const MIRROR_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const WORKFLOW_PATTERN = /^[A-Za-z0-9_.-]+\.ya?ml$/;
 const PATH_PREFIX_PATTERN = /^\/[a-z0-9/_-]*[a-z0-9_-]$/;
+const MAX_REPOSITORY_LENGTH = 200;
+const MAX_WORKER_BASE_URL_LENGTH = 2048;
+const MAX_DISPATCH_REF_LENGTH = 255;
+const MAX_GITHUB_APP_CLIENT_ID_LENGTH = 100;
 const FORBIDDEN_SECRET_KEYS = new Set([
   "secret",
   "webhook_secret",
@@ -85,13 +89,24 @@ export function validateConfig(config) {
     assertObject(config.worker, "worker");
     assertExactKeys(config.worker, ["base_url", "path_prefix"], "worker");
     if (config.worker.base_url !== null) {
-      if (typeof config.worker.base_url !== "string" || !config.worker.base_url.startsWith("https://")) {
-        fail("worker.base_url must be null or an HTTPS URL.");
+      if (
+        typeof config.worker.base_url !== "string" ||
+        config.worker.base_url.length > MAX_WORKER_BASE_URL_LENGTH ||
+        !config.worker.base_url.startsWith("https://")
+      ) {
+        fail("worker.base_url must be null or a clean HTTPS origin.");
       } else {
         try {
           const url = new URL(config.worker.base_url);
-          if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
-            fail("worker.base_url must be a clean HTTPS base URL without credentials, query or fragment.");
+          if (
+            url.protocol !== "https:" ||
+            url.username ||
+            url.password ||
+            url.pathname !== "/" ||
+            url.search ||
+            url.hash
+          ) {
+            fail("worker.base_url must be a clean HTTPS origin without credentials, path, query or fragment.");
           }
         } catch {
           fail("worker.base_url is not a valid URL.");
@@ -118,19 +133,28 @@ export function validateConfig(config) {
       ],
       "dispatch"
     );
-    if (typeof config.dispatch.github_repository !== "string" || !REPOSITORY_PATTERN.test(config.dispatch.github_repository)) {
+    if (
+      typeof config.dispatch.github_repository !== "string" ||
+      config.dispatch.github_repository.length > MAX_REPOSITORY_LENGTH ||
+      !REPOSITORY_PATTERN.test(config.dispatch.github_repository)
+    ) {
       fail("dispatch.github_repository must use owner/repository notation.");
     }
     if (typeof config.dispatch.workflow_file !== "string" || !WORKFLOW_PATTERN.test(config.dispatch.workflow_file)) {
       fail("dispatch.workflow_file must be a workflow YAML filename.");
     }
-    if (typeof config.dispatch.ref !== "string" || config.dispatch.ref.length === 0) {
+    if (
+      typeof config.dispatch.ref !== "string" ||
+      config.dispatch.ref.length === 0 ||
+      config.dispatch.ref.length > MAX_DISPATCH_REF_LENGTH
+    ) {
       fail("dispatch.ref must be a non-empty Git ref.");
     }
     if (
       config.dispatch.github_app_client_id !== null &&
       (
         typeof config.dispatch.github_app_client_id !== "string" ||
+        config.dispatch.github_app_client_id.length > MAX_GITHUB_APP_CLIENT_ID_LENGTH ||
         !/^[A-Za-z0-9_-]+$/.test(config.dispatch.github_app_client_id)
       )
     ) {
@@ -158,6 +182,9 @@ export function validateConfig(config) {
   if (!Array.isArray(config.mirrors)) {
     fail("mirrors must be an array.");
     return errors;
+  }
+  if (config.mirrors.length > 0 && config.worker.base_url === null) {
+    fail("worker.base_url must be configured before enabling a mirror.");
   }
   if (
     config.mirrors.length > 0 &&
@@ -198,10 +225,18 @@ export function validateConfig(config) {
     if (typeof mirror.scheduled_recovery !== "boolean") {
       fail(`${label}.scheduled_recovery must be boolean.`);
     }
-    if (typeof mirror.bitbucket_repository !== "string" || !REPOSITORY_PATTERN.test(mirror.bitbucket_repository)) {
+    if (
+      typeof mirror.bitbucket_repository !== "string" ||
+      mirror.bitbucket_repository.length > MAX_REPOSITORY_LENGTH ||
+      !REPOSITORY_PATTERN.test(mirror.bitbucket_repository)
+    ) {
       fail(`${label}.bitbucket_repository must use workspace/repository notation.`);
     }
-    if (typeof mirror.github_repository !== "string" || !REPOSITORY_PATTERN.test(mirror.github_repository)) {
+    if (
+      typeof mirror.github_repository !== "string" ||
+      mirror.github_repository.length > MAX_REPOSITORY_LENGTH ||
+      !REPOSITORY_PATTERN.test(mirror.github_repository)
+    ) {
       fail(`${label}.github_repository must use owner/repository notation.`);
     }
 
@@ -218,12 +253,14 @@ export function validateConfig(config) {
       }
     }
     if (typeof mirror.bitbucket_repository === "string") {
-      if (sources.has(mirror.bitbucket_repository)) fail(`Duplicate Bitbucket source: ${mirror.bitbucket_repository}.`);
-      sources.add(mirror.bitbucket_repository);
+      const sourceKey = mirror.bitbucket_repository.toLowerCase();
+      if (sources.has(sourceKey)) fail(`Duplicate Bitbucket source: ${mirror.bitbucket_repository}.`);
+      sources.add(sourceKey);
     }
     if (typeof mirror.github_repository === "string") {
-      if (targets.has(mirror.github_repository)) fail(`Duplicate GitHub target: ${mirror.github_repository}.`);
-      targets.add(mirror.github_repository);
+      const targetKey = mirror.github_repository.toLowerCase();
+      if (targets.has(targetKey)) fail(`Duplicate GitHub target: ${mirror.github_repository}.`);
+      targets.add(targetKey);
     }
   });
 
