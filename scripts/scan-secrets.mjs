@@ -5,7 +5,7 @@ import path from "node:path";
 const root = path.resolve(process.argv[2] ?? ".");
 const ignored = new Set([".git", "node_modules", ".wrangler", "dist", "coverage"]);
 const patterns = [
-  { name: "private SSH key", regex: /-----BEGIN (?:OPENSSH|RSA|EC|DSA) PRIVATE KEY-----/ },
+  { name: "private key", regex: /-----BEGIN (?:(?:OPENSSH|RSA|EC|DSA) )?PRIVATE KEY-----/ },
   { name: "GitHub classic token", regex: /ghp_[A-Za-z0-9]{30,}/ },
   { name: "GitHub fine-grained token", regex: /github_pat_[A-Za-z0-9_]{40,}/ },
   { name: "GitHub App user access token", regex: /ghu_[A-Za-z0-9]{30,}/ },

@@ -108,10 +108,151 @@ function Invoke-CloudflareApi {
     return $response
 }
 
+function Invoke-CloudflareMultipartApi {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][hashtable]$Metadata,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Modules
+    )
+
+    $credentials = Get-CloudflareCredentials
+    $uri = "https://api.cloudflare.com/client/v4/$Path"
+    $client = [Net.Http.HttpClient]::new()
+    $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Put, $uri)
+    $multipart = [Net.Http.MultipartFormDataContent]::new()
+    try {
+        $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $credentials.Token)
+        $client.DefaultRequestHeaders.Accept.Add([Net.Http.Headers.MediaTypeWithQualityHeaderValue]::new('application/json'))
+
+        $metadataContent = [Net.Http.StringContent]::new(
+            ($Metadata | ConvertTo-Json -Depth 30 -Compress),
+            [Text.Encoding]::UTF8,
+            'application/json'
+        )
+        $multipart.Add($metadataContent, 'metadata')
+        foreach ($moduleName in @($Modules.Keys | Sort-Object)) {
+            $moduleContent = [Net.Http.StringContent]::new(
+                [string]$Modules[$moduleName],
+                [Text.Encoding]::UTF8,
+                'application/javascript+module'
+            )
+            $multipart.Add($moduleContent, [string]$moduleName, [string]$moduleName)
+        }
+        $request.Content = $multipart
+        $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            $providerMessage = Get-CloudflareErrorMessage -ResponseBody $responseBody
+            $detail = if ($providerMessage) { $providerMessage } else { $response.ReasonPhrase }
+            throw "Cloudflare API request failed (HTTP $([int]$response.StatusCode), PUT $Path): $detail"
+        }
+        $parsed = $responseBody | ConvertFrom-Json
+        if ($parsed.PSObject.Properties.Name -contains 'success' -and -not $parsed.success) {
+            $messages = @($parsed.errors | ForEach-Object {
+                $code = if ($null -ne $_.code) { "[$($_.code)] " } else { '' }
+                "$code$($_.message)"
+            }) -join '; '
+            throw "Cloudflare API request failed (PUT $Path): $messages"
+        }
+        return $parsed
+    }
+    finally {
+        $request.Dispose()
+        $client.Dispose()
+    }
+}
+
 function Test-CloudflareAuthentication {
     $credentials = Get-CloudflareCredentials
     [void](Invoke-CloudflareApi -Method GET -Path "accounts/$($credentials.AccountId)/workers/scripts")
     return $true
+}
+
+function Get-CloudflareWorkerSecrets {
+    param(
+        [string]$WorkerConfig = 'worker/wrangler.jsonc',
+        [switch]$AllowMissing
+    )
+
+    $credentials = Get-CloudflareCredentials
+    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
+    $response = Invoke-CloudflareApi -Method GET -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/secrets" -AllowMissing:$AllowMissing
+    if ($null -eq $response) { return @() }
+    return @($response.result)
+}
+
+function Test-CloudflareWorkerDeployment {
+    param([string]$WorkerConfig = 'worker/wrangler.jsonc')
+
+    $credentials = Get-CloudflareCredentials
+    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
+    $response = Invoke-CloudflareApi -Method GET -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/settings" -AllowMissing
+    return $null -ne $response
+}
+
+function Assert-CloudflareWorkerReady {
+    param(
+        [string[]]$RequiredSecretNames = @('GITHUB_APP_PRIVATE_KEY'),
+        [string]$WorkerConfig = 'worker/wrangler.jsonc'
+    )
+
+    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
+    if (-not (Test-CloudflareWorkerDeployment -WorkerConfig $WorkerConfig)) {
+        throw "Cloudflare Worker is not deployed: $workerName. Run .\tools\Deploy-MirrorWorker.ps1 before provisioning a mirror."
+    }
+    $secretNames = @(Get-CloudflareWorkerSecrets -WorkerConfig $WorkerConfig | ForEach-Object { [string]$_.name })
+    foreach ($secretName in $RequiredSecretNames) {
+        if ($secretName -notin $secretNames) {
+            throw "Cloudflare Worker is missing required secret binding: $secretName"
+        }
+    }
+    return $true
+}
+
+function Publish-CloudflareWorker {
+    param(
+        [string]$ConfigPath = 'config/mirrors.json',
+        [string]$WorkerConfig = 'worker/wrangler.jsonc'
+    )
+
+    $root = Get-RepositoryRoot
+    $workerConfigPath = if ([IO.Path]::IsPathRooted($WorkerConfig)) { $WorkerConfig } else { Join-Path $root $WorkerConfig }
+    $mirrorConfigPath = if ([IO.Path]::IsPathRooted($ConfigPath)) { $ConfigPath } else { Join-Path $root $ConfigPath }
+    $wrangler = Get-Content -LiteralPath $workerConfigPath -Raw | ConvertFrom-Json
+    $mirrorConfig = Get-Content -LiteralPath $mirrorConfigPath -Raw
+    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
+    $credentials = Get-CloudflareCredentials
+    $sourceDirectory = Join-Path $root 'worker/src'
+    $indexSource = Get-Content -LiteralPath (Join-Path $sourceDirectory 'index.js') -Raw
+    $indexSource = $indexSource.Replace(
+        'import mirrorConfig from "../../config/mirrors.json" with { type: "json" };',
+        'import mirrorConfig from "./mirror-config.js";'
+    )
+    $modules = [ordered]@{
+        'index.js' = $indexSource
+        'handler.js' = Get-Content -LiteralPath (Join-Path $sourceDirectory 'handler.js') -Raw
+        'crypto.js' = Get-Content -LiteralPath (Join-Path $sourceDirectory 'crypto.js') -Raw
+        'github-app.js' = Get-Content -LiteralPath (Join-Path $sourceDirectory 'github-app.js') -Raw
+        'mirror-config.js' = "export default $($mirrorConfig.Trim());`n"
+    }
+    $existingSecrets = @(Get-CloudflareWorkerSecrets -WorkerConfig $WorkerConfig -AllowMissing)
+    $bindings = @($existingSecrets | ForEach-Object { @{ name = [string]$_.name; type = 'inherit' } })
+    $metadata = @{
+        main_module = 'index.js'
+        compatibility_date = [string]$wrangler.compatibility_date
+        observability = $wrangler.observability
+        bindings = $bindings
+    }
+    $path = "accounts/$($credentials.AccountId)/workers/scripts/$workerName"
+    if ($bindings.Count -gt 0) { $path += '?bindings_inherit=strict' }
+    [void](Invoke-CloudflareMultipartApi -Path $path -Metadata $metadata -Modules $modules)
+
+    if ($wrangler.workers_dev) {
+        [void](Invoke-CloudflareApi -Method POST -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/subdomain" -Body @{
+            enabled = $true
+            previews_enabled = $false
+        })
+    }
 }
 
 function Set-CloudflareWorkerSecret {
@@ -142,4 +283,4 @@ function Remove-CloudflareWorkerSecret {
     [void](Invoke-CloudflareApi -Method DELETE -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/secrets/$encodedSecretName")
 }
 
-Export-ModuleMember -Function Get-CloudflareCredentials, Invoke-CloudflareApi, Test-CloudflareAuthentication, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret
+Export-ModuleMember -Function Get-CloudflareCredentials, Get-CloudflareWorkerName, Invoke-CloudflareApi, Test-CloudflareAuthentication, Get-CloudflareWorkerSecrets, Test-CloudflareWorkerDeployment, Assert-CloudflareWorkerReady, Publish-CloudflareWorker, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret

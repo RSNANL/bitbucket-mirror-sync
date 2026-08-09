@@ -11,16 +11,27 @@ Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Common.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Config.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.GitHub.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Bitbucket.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Cloudflare.psm1') -Force
 
 $config = Get-MirrorConfiguration -ConfigPath $ConfigPath
 $mirror = $config.mirrors | Where-Object { $_.id -eq $MirrorId } | Select-Object -First 1
 if (-not $mirror) { throw "Mirror is not configured: $MirrorId" }
+if (
+    [string]::IsNullOrWhiteSpace([string]$config.dispatch.github_app_client_id) -or
+    $null -eq $config.dispatch.github_app_installation_id
+) {
+    throw 'GitHub App dispatch identity is not configured.'
+}
 $environmentName = Get-DerivedEnvironmentName -MirrorId $MirrorId
 $sourceLabelPrefix = "mirror:$MirrorId:source:"
 $targetTitlePrefix = "mirror:$MirrorId:target:"
 $webhookDescription = "mirror:$MirrorId"
 
-Assert-GitHubAuthentication
+[void](Test-GitHubAuthentication)
+[void](Assert-CloudflareWorkerReady -RequiredSecretNames @(
+    'GITHUB_APP_PRIVATE_KEY',
+    (Get-DerivedWebhookSecretBinding -MirrorId $MirrorId)
+))
 $bitbucketCredentials = Get-BitbucketCredentials
 try {
     if ($null -eq (Get-BitbucketRepository -Repository $mirror.bitbucket_repository -Credentials $bitbucketCredentials -AllowMissing)) {

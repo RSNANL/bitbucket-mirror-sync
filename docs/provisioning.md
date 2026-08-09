@@ -28,6 +28,21 @@ Then start a management session:
 
 See `authentication.md` for the one-time provider application registrations and the session boundary.
 
+## Worker bootstrap
+
+Before the first mirror is provisioned, create a separate private GitHub App for unattended dispatch. Configure only repository permission `Actions: write` (GitHub adds metadata read access), install it only on `RSNANL/bitbucket-mirror-sync`, and generate one private key.
+
+Run the deployment once without `-Apply` and review the plan:
+
+```powershell
+./tools/Deploy-MirrorWorker.ps1 `
+  -GitHubAppClientId '<client-id>' `
+  -GitHubAppInstallationId <installation-id> `
+  -GitHubAppPrivateKeyPath '<downloaded-private-key.pem>'
+```
+
+Then apply the same parameters. The deployment uses the active Cloudflare OAuth session directly, stores the public GitHub App identifiers in `config/mirrors.json`, uploads the private key only as encrypted Worker secret `GITHUB_APP_PRIVATE_KEY`, and preserves all existing Worker secrets on later deployments. No Wrangler login or persistent Cloudflare deployment credential is used. After bootstrap, remove the downloaded private-key file once the encrypted binding has been verified.
+
 ## New mirror
 
 Run once without `-Apply` and review the plan. With `-Apply`, `New-Mirror.ps1`:
@@ -45,15 +60,15 @@ Run once without `-Apply` and review the plan. With `-Apply`, `New-Mirror.ps1`:
 11. adds the local non-secret mirror entry;
 12. removes all local private-key files.
 
-The script does not commit, push, deploy the Worker or dispatch the mirror workflow.
+Before creating any provider resource, the script verifies that the generic Worker is deployed and contains its GitHub App machine-identity secret. The script does not commit, push, deploy the Worker or dispatch the mirror workflow.
 
 Example planning call:
 
 ```powershell
 ./tools/New-Mirror.ps1 `
-  -MirrorId roomba-automation `
-  -BitbucketRepository '<workspace>/<repository>' `
-  -GitHubRepository 'RSNANL/roomba-automation-mirror' `
+  -MirrorId generic-vacuum-statemachine-blueprint `
+  -BitbucketRepository 'rsna_nl/generic-vacuum-statemachine-blueprint' `
+  -GitHubRepository 'RSNANL/generic-vacuum-statemachine-blueprint-mirror' `
   -WorkerBaseUrl 'https://<worker>.<subdomain>.workers.dev'
 ```
 
@@ -67,12 +82,12 @@ After review:
 
 Review and commit only the generated non-secret configuration. The generic workflow must be present on the repository default branch before webhook dispatch can be tested.
 
-Worker deployment is a management operation and therefore uses the current interactive Cloudflare management session; no Cloudflare deployment token is stored in GitHub Actions.
+Deploy the Worker again after reviewing the generated configuration. Worker deployment is a management operation and therefore uses the current interactive Cloudflare management session; no Cloudflare deployment token is stored in GitHub Actions.
 
 After the configuration and Worker are active, verify provider resources and manually dispatch the mirror workflow:
 
 ```powershell
-./tools/Test-Mirror.ps1 -MirrorId roomba-automation -Dispatch
+./tools/Test-Mirror.ps1 -MirrorId generic-vacuum-statemachine-blueprint -Dispatch
 ```
 
 Only after a successful webhook-driven push test and pruning test should scheduled recovery be enabled.

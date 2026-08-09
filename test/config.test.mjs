@@ -16,13 +16,15 @@ function baseConfig() {
     dispatch: {
       github_repository: "RSNANL/bitbucket-mirror-sync",
       workflow_file: "mirror.yml",
-      ref: "main"
+      ref: "main",
+      github_app_client_id: "Iv23liExampleClientId",
+      github_app_installation_id: 12345678
     },
     mirrors: []
   };
 }
 
-function mirror(id = "roomba-automation") {
+function mirror(id = "generic-vacuum-statemachine-blueprint") {
   return {
     id,
     enabled: true,
@@ -32,13 +34,22 @@ function mirror(id = "roomba-automation") {
   };
 }
 
-test("accepts an empty inactive configuration", () => {
-  assert.deepEqual(validateConfig(baseConfig()), []);
+test("accepts an empty inactive configuration before Worker bootstrap", () => {
+  const config = baseConfig();
+  config.dispatch.github_app_client_id = null;
+  config.dispatch.github_app_installation_id = null;
+  assert.deepEqual(validateConfig(config), []);
 });
 
 test("derives environment and secret binding from the mirror id", () => {
-  assert.equal(deriveEnvironmentName("roomba-automation"), "mirror-roomba-automation");
-  assert.equal(deriveWebhookSecretBinding("roomba-automation"), "WEBHOOK_ROOMBA_AUTOMATION");
+  assert.equal(
+    deriveEnvironmentName("generic-vacuum-statemachine-blueprint"),
+    "mirror-generic-vacuum-statemachine-blueprint"
+  );
+  assert.equal(
+    deriveWebhookSecretBinding("generic-vacuum-statemachine-blueprint"),
+    "WEBHOOK_GENERIC_VACUUM_STATEMACHINE_BLUEPRINT"
+  );
 });
 
 test("rejects duplicate ids, sources and targets", () => {
@@ -57,13 +68,23 @@ test("rejects secret values in configuration", () => {
   assert.match(validateConfig(config).join("\n"), /secret values must not be stored/);
 });
 
+test("requires complete non-secret GitHub App dispatch identifiers", () => {
+  const config = baseConfig();
+  config.dispatch.github_app_client_id = null;
+  config.dispatch.github_app_installation_id = null;
+  config.dispatch.github_app_client_id = "Iv23liExampleClientId";
+  assert.match(validateConfig(config).join("\n"), /client and installation IDs/);
+  config.dispatch.github_app_installation_id = 12345678;
+  assert.deepEqual(validateConfig(config), []);
+});
+
 test("returns enriched derived mirror data", () => {
   const config = baseConfig();
   config.mirrors.push(mirror());
-  const resolved = getMirror(config, "roomba-automation", { requireEnabled: true });
-  assert.equal(resolved.github_environment, "mirror-roomba-automation");
-  assert.equal(resolved.webhook_secret_binding, "WEBHOOK_ROOMBA_AUTOMATION");
-  assert.equal(resolved.webhook_path, "/webhooks/roomba-automation");
+  const resolved = getMirror(config, "generic-vacuum-statemachine-blueprint", { requireEnabled: true });
+  assert.equal(resolved.github_environment, "mirror-generic-vacuum-statemachine-blueprint");
+  assert.equal(resolved.webhook_secret_binding, "WEBHOOK_GENERIC_VACUUM_STATEMACHINE_BLUEPRINT");
+  assert.equal(resolved.webhook_path, "/webhooks/generic-vacuum-statemachine-blueprint");
 });
 
 test("add and remove CLI scripts preserve a valid configuration", async () => {
@@ -74,18 +95,37 @@ test("add and remove CLI scripts preserve a valid configuration", async () => {
   const add = spawnSync(process.execPath, [
     "scripts/add-mirror-config.mjs",
     "--config", configPath,
-    "--id", "roomba-automation",
-    "--source", "rsna_nl/roomba-automation",
-    "--target", "RSNANL/roomba-automation-mirror"
+    "--id", "generic-vacuum-statemachine-blueprint",
+    "--source", "rsna_nl/generic-vacuum-statemachine-blueprint",
+    "--target", "RSNANL/generic-vacuum-statemachine-blueprint-mirror"
   ], { cwd: path.resolve("."), encoding: "utf8" });
   assert.equal(add.status, 0, add.stderr);
   assert.equal(JSON.parse(fs.readFileSync(configPath, "utf8")).mirrors.length, 1);
   const remove = spawnSync(process.execPath, [
     "scripts/remove-mirror-config.mjs",
     "--config", configPath,
-    "--id", "roomba-automation"
+    "--id", "generic-vacuum-statemachine-blueprint"
   ], { cwd: path.resolve("."), encoding: "utf8" });
   assert.equal(remove.status, 0, remove.stderr);
   assert.equal(JSON.parse(fs.readFileSync(configPath, "utf8")).mirrors.length, 0);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("dispatch identity CLI stores only the public GitHub App identifiers", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-dispatch-test-"));
+  const configPath = path.join(directory, "mirrors.json");
+  fs.writeFileSync(configPath, JSON.stringify(baseConfig()));
+  const { spawnSync } = await import("node:child_process");
+  const update = spawnSync(process.execPath, [
+    "scripts/set-github-dispatch-identity.mjs",
+    "--config", configPath,
+    "--client-id", "Iv23liExampleClientId",
+    "--installation-id", "12345678"
+  ], { cwd: path.resolve("."), encoding: "utf8" });
+  assert.equal(update.status, 0, update.stderr);
+  const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.equal(updated.dispatch.github_app_client_id, "Iv23liExampleClientId");
+  assert.equal(updated.dispatch.github_app_installation_id, 12345678);
+  assert.deepEqual(validateConfig(updated), []);
   fs.rmSync(directory, { recursive: true, force: true });
 });

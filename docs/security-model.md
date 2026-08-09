@@ -8,7 +8,7 @@ Each management PowerShell process must run `Connect-MirrorSession.ps1`. GitHub,
 
 No management PAT, API token, OAuth refresh token or provider password is committed, written to configuration, stored in a keyring or copied into GitHub or Cloudflare secret storage.
 
-Non-secret OAuth identifiers such as client IDs, account IDs and loopback callback URIs are explicit configuration in `config/authentication.json`.
+Only the management GitHub client ID, Cloudflare client and account IDs, and Bitbucket client ID are stored in `config/authentication.json`. Callback URIs and requested scopes are fixed implementation contracts.
 
 ## Credential isolation for mirror runtime
 
@@ -39,7 +39,7 @@ Worker:
 - never logs payloads, signatures, tokens or secret values;
 - dispatches only the configured workflow and ref.
 
-The unattended Worker dispatch identity is a machine credential and must be scoped only to dispatching the generic workflow in this infrastructure repository. It must never reuse a management-session credential.
+The unattended Worker dispatch identity is a dedicated GitHub App installed only on this infrastructure repository with `Actions: write` and mandatory metadata read access. The Worker signs a short-lived JWT with the encrypted `GITHUB_APP_PRIVATE_KEY` binding and requests a repository- and permission-bounded installation token for each dispatch. The installation token expires automatically and no personal access token or management-session credential is persisted.
 
 ## Recovery assumptions
 

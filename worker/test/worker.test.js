@@ -9,14 +9,16 @@ const config = {
   dispatch: {
     github_repository: "RSNANL/bitbucket-mirror-sync",
     workflow_file: "mirror.yml",
-    ref: "main"
+    ref: "main",
+    github_app_client_id: "Iv23liExampleClientId",
+    github_app_installation_id: 12345678
   },
   mirrors: [
     {
-      id: "roomba-automation",
+      id: "generic-vacuum-statemachine-blueprint",
       enabled: true,
-      bitbucket_repository: "rsna_nl/roomba-automation",
-      github_repository: "RSNANL/roomba-automation-mirror",
+      bitbucket_repository: "rsna_nl/generic-vacuum-statemachine-blueprint",
+      github_repository: "RSNANL/generic-vacuum-statemachine-blueprint-mirror",
       scheduled_recovery: false
     },
     {
@@ -31,7 +33,9 @@ const config = {
 
 const secret = "unit-test-webhook-secret";
 const token = "unit-test-dispatch-token";
-const payload = JSON.stringify({ repository: { full_name: "rsna_nl/roomba-automation" } });
+const payload = JSON.stringify({
+  repository: { full_name: "rsna_nl/generic-vacuum-statemachine-blueprint" }
+});
 
 /** @param {string} body */
 async function signature(body) {
@@ -44,7 +48,9 @@ async function signature(body) {
  */
 async function request(overrides = {}) {
   const body = overrides.body ?? payload;
-  return new Request(`https://worker.example${overrides.path ?? "/webhooks/roomba-automation"}`, {
+  return new Request(
+    `https://worker.example${overrides.path ?? "/webhooks/generic-vacuum-statemachine-blueprint"}`,
+    {
     method: overrides.method ?? "POST",
     headers: {
       "content-type": "application/json",
@@ -52,15 +58,20 @@ async function request(overrides = {}) {
       "x-hub-signature": overrides.signatureValue ?? await signature(body)
     },
     body: (overrides.method ?? "POST") === "POST" ? body : undefined
-  });
+    }
+  );
 }
 
 function env() {
   return {
-    WEBHOOK_ROOMBA_AUTOMATION: secret,
+    WEBHOOK_GENERIC_VACUUM_STATEMACHINE_BLUEPRINT: secret,
     WEBHOOK_DISABLED_MIRROR: secret,
-    GITHUB_DISPATCH_TOKEN: token
+    GITHUB_APP_PRIVATE_KEY: "unit-test-private-key"
   };
+}
+
+async function getDispatchToken() {
+  return token;
 }
 
 test("rejects non-POST methods", async () => {
@@ -107,6 +118,7 @@ test("dispatches the configured workflow for a valid push", async () => {
   /** @type {RequestInit | undefined} */
   let calledInit;
   const worker = createWorker(config, {
+    getDispatchToken,
     fetchImpl: async (url, init) => {
       calledUrl = String(url);
       calledInit = init;
@@ -120,12 +132,13 @@ test("dispatches the configured workflow for a valid push", async () => {
   assert.equal(new Headers(calledInit?.headers).get("authorization"), `Bearer ${token}`);
   assert.deepEqual(JSON.parse(String(calledInit?.body)), {
     ref: "main",
-    inputs: { mirror_id: "roomba-automation" }
+    inputs: { mirror_id: "generic-vacuum-statemachine-blueprint" }
   });
 });
 
 test("returns a gateway error when GitHub rejects the dispatch", async () => {
   const worker = createWorker(config, {
+    getDispatchToken,
     fetchImpl: async () => new Response("denied", { status: 403 })
   });
   const response = await worker.fetch(await request(), env());
@@ -134,6 +147,8 @@ test("returns a gateway error when GitHub rejects the dispatch", async () => {
 
 test("fails closed when required Worker secrets are absent", async () => {
   const worker = createWorker(config);
-  assert.equal((await worker.fetch(await request(), { GITHUB_DISPATCH_TOKEN: token })).status, 503);
-  assert.equal((await worker.fetch(await request(), { WEBHOOK_ROOMBA_AUTOMATION: secret })).status, 503);
+  assert.equal((await worker.fetch(await request(), { GITHUB_APP_PRIVATE_KEY: "private-key" })).status, 503);
+  assert.equal((await worker.fetch(await request(), {
+    WEBHOOK_GENERIC_VACUUM_STATEMACHINE_BLUEPRINT: secret
+  })).status, 503);
 });
