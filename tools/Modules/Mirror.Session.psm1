@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Mirror.Common.psm1') -Force
 
 $script:CloudflareRedirectUri = 'http://127.0.0.1:53682/callback'
-$script:CloudflareOAuthScopes = @('workers-scripts.edit')
+$script:CloudflareOAuthScopes = @('workers-scripts.read', 'workers-scripts.write')
 $script:BitbucketRedirectUri = 'http://127.0.0.1:53683/callback'
 
 $script:SessionVariables = @(
