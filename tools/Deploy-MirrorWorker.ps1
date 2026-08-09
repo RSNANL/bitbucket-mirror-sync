@@ -71,6 +71,7 @@ if (
 
 $root = Get-RepositoryRoot
 $workerTests = @(Get-ChildItem -LiteralPath (Join-Path $root 'worker/test') -Filter '*.test.js' | Sort-Object Name | ForEach-Object { $_.FullName })
+$preflightToken = $null
 try {
     [void](Invoke-ExternalCommand -FilePath (Resolve-ExternalCommand node) -ArgumentList (@('--test') + $workerTests))
     Publish-CloudflareWorker -ConfigPath $ConfigPath
@@ -83,9 +84,22 @@ try {
         Write-Host 'Removed legacy personal dispatch token binding.'
     }
     [void](Assert-CloudflareWorkerReady)
+    $preflightToken = New-RandomSecret -ByteLength 32
+    Set-CloudflareWorkerSecret -SecretName 'GITHUB_APP_AUTH_PREFLIGHT_TOKEN' -SecretValue $preflightToken
+    [void](Test-CloudflareWorkerGitHubAppAuthentication `
+        -WorkerBaseUrl (Get-CloudflareWorkerBaseUrl) `
+        -PreflightToken $preflightToken)
 }
 finally {
-    $privateKey = $null
+    try {
+        if ($preflightToken) {
+            Remove-CloudflareWorkerSecret -SecretName 'GITHUB_APP_AUTH_PREFLIGHT_TOKEN'
+        }
+    }
+    finally {
+        $preflightToken = $null
+        $privateKey = $null
+    }
 }
 
 Write-Host 'Cloudflare Worker is deployed and its GitHub App machine identity is ready.'

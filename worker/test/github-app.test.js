@@ -2,7 +2,11 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import test from "node:test";
-import { createGitHubAppJwt, getGitHubInstallationToken } from "../src/github-app.js";
+import {
+  createGitHubAppJwt,
+  describeGitHubAppAuthenticationError,
+  getGitHubInstallationToken
+} from "../src/github-app.js";
 
 /** @param {ArrayBuffer} data */
 function toPem(data) {
@@ -66,4 +70,29 @@ test("requests a repository- and permission-bounded installation token", async (
     repositories: ["bitbucket-mirror-sync"],
     permissions: { actions: "write" }
   });
+});
+
+test("reports a rejected installation token request without provider response data", async () => {
+  const config = {
+    dispatch: {
+      github_repository: "RSNANL/bitbucket-mirror-sync",
+      github_app_client_id: "Iv23liExampleClientId",
+      github_app_installation_id: 12345678
+    }
+  };
+  await assert.rejects(
+    getGitHubInstallationToken(
+      config,
+      { GITHUB_APP_PRIVATE_KEY: await privateKeyPem() },
+      async () => Response.json({ message: "secret provider detail" }, { status: 401 })
+    ),
+    { message: "GitHub App installation token request failed: HTTP 401." }
+  );
+});
+
+test("does not expose unexpected thrown values as authentication details", () => {
+  assert.equal(
+    describeGitHubAppAuthenticationError(new Error("installation-token-value")),
+    "GitHub App installation authentication failed: unexpected error."
+  );
 });
