@@ -86,6 +86,10 @@ try {
     [void](Assert-CloudflareWorkerReady)
     $preflightToken = New-RandomSecret -ByteLength 32
     Set-CloudflareWorkerSecret -SecretName 'GITHUB_APP_AUTH_PREFLIGHT_TOKEN' -SecretValue $preflightToken
+    [void](Assert-CloudflareWorkerReady -RequiredSecretNames @(
+        'GITHUB_APP_PRIVATE_KEY',
+        'GITHUB_APP_AUTH_PREFLIGHT_TOKEN'
+    ))
     [void](Test-CloudflareWorkerGitHubAppAuthentication `
         -WorkerBaseUrl (Get-CloudflareWorkerBaseUrl) `
         -PreflightToken $preflightToken)
