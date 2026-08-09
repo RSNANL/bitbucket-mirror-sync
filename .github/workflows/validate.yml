@@ -1,0 +1,59 @@
+name: Validate mirror infrastructure
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate configuration, Worker and mirror runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v6
+
+      - name: Configure Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Validate mirror configuration
+        run: node scripts/validate-config.mjs
+
+      - name: Parse configuration schemas
+        run: node -e 'for (const file of ["config/authentication.schema.json", "config/mirrors.schema.json"]) JSON.parse(require("fs").readFileSync(file, "utf8"))'
+
+      - name: Run configuration tests
+        run: node --test test/*.test.mjs
+
+      - name: Scan repository for secret material
+        run: node scripts/scan-secrets.mjs .
+
+      - name: Validate shell scripts
+        run: bash -n scripts/*.sh
+
+      - name: Validate PowerShell scripts and authentication configuration
+        shell: pwsh
+        run: |
+          ./scripts/test-powershell-syntax.ps1
+          Import-Module ./tools/Modules/Mirror.Session.psm1 -Force
+          Test-MirrorAuthenticationConfiguration -RequireConfigured
+
+      - name: Test local Git mirroring and prune behavior
+        run: scripts/test-mirror-local.sh
+
+      - name: Test Worker behavior
+        working-directory: worker
+        run: npm test
+
+      - name: Type-check Worker source
+        working-directory: worker
+        run: npx --yes --package typescript@5.8.3 tsc -p jsconfig.json

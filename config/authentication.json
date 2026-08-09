@@ -1,0 +1,12 @@
+{
+  "github": {
+    "client_id": "Iv23liGDjCsXr6Fyy9Aj"
+  },
+  "cloudflare": {
+    "client_id": "105bfde28deb1e685570f48b08b03326",
+    "account_id": "69ac93d51473ede2fac31378c071758c"
+  },
+  "bitbucket": {
+    "client_id": "mMtUkpwscyHVeCAA4Ov5sp786LlDkTtw"
+  }
+}

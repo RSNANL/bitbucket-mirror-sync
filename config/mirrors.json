@@ -1,0 +1,22 @@
+{
+  "worker": {
+    "base_url": "https://bitbucket-mirror-dispatch.rowan-69a.workers.dev",
+    "path_prefix": "/webhooks"
+  },
+  "dispatch": {
+    "github_repository": "RSNANL/bitbucket-mirror-sync",
+    "workflow_file": "mirror.yml",
+    "ref": "main",
+    "github_app_client_id": "Iv23IgZxOkJSwcrLHLR",
+    "github_app_installation_id": 152492934
+  },
+  "mirrors": [
+    {
+      "id": "generic-vacuum-statemachine-blueprint",
+      "enabled": true,
+      "bitbucket_repository": "rsna_nl/generic-vacuum-statemachine-blueprint",
+      "github_repository": "RSNANL/generic-vacuum-statemachine-blueprint-mirror",
+      "scheduled_recovery": false
+    }
+  ]
+}
