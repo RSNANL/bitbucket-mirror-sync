@@ -47,9 +47,9 @@ The OAuth client is created once under the intended Cloudflare account and remai
 - use PKCE `S256`;
 - allow `http://127.0.0.1:53682/callback`;
 - be limited to the intended Cloudflare account;
-- allow the `Workers Editor` OAuth scope (`workers-scripts.edit`).
+- allow `Workers Scripts Read` (`workers-scripts.read`) and `Workers Scripts Write` (`workers-scripts.write`).
 
-The callback URI and requested scope are fixed by the management implementation. Only the client ID and account ID are stored in `config/authentication.json`.
+The callback URI and requested scopes are fixed by the management implementation. Only the client ID and account ID are stored in `config/authentication.json`.
 
 Cloudflare authentication is validated in two distinct layers. Session establishment validates the issued OAuth access token against Cloudflare's OAuth `userinfo` endpoint. Workers API capability is validated separately through `Test-CloudflareAuthentication` / `Test-Prerequisites.ps1`. This separation prevents an OAuth-client or token problem from being conflated with a Workers API permission mapping problem.
 
