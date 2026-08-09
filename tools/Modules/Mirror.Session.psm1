@@ -464,7 +464,6 @@ function Connect-BitbucketSession {
         }
 
         $tokenResponse = $null
-        [void](Invoke-RestMethod -Method GET -Uri 'https://api.bitbucket.org/2.0/repositories?pagelen=1' -Headers @{ Authorization = "Bearer $token"; Accept = 'application/json' })
         Write-Host 'Bitbucket authenticated for this process.'
     }
     finally {
