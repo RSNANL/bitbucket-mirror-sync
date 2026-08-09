@@ -1,6 +1,11 @@
 // @ts-check
 import { verifyBitbucketSignature } from "./crypto.js";
-import { getGitHubInstallationToken } from "./github-app.js";
+import {
+  describeGitHubAppAuthenticationError,
+  getGitHubInstallationToken
+} from "./github-app.js";
+
+const GITHUB_APP_AUTH_PREFLIGHT_PATH = "/_internal/github-app-authentication";
 
 /**
  * @typedef {{
@@ -25,6 +30,7 @@ import { getGitHubInstallationToken } from "./github-app.js";
  *
  * @typedef {{
  *   GITHUB_APP_PRIVATE_KEY?: string,
+ *   GITHUB_APP_AUTH_PREFLIGHT_TOKEN?: string,
  *   [key: string]: string | undefined
  * }} WorkerEnv
  */
@@ -108,6 +114,25 @@ export function createWorker(config, options = {}) {
       }
 
       const url = new URL(request.url);
+      if (url.pathname === GITHUB_APP_AUTH_PREFLIGHT_PATH) {
+        const preflightToken = env.GITHUB_APP_AUTH_PREFLIGHT_TOKEN;
+        if (
+          !preflightToken ||
+          request.headers.get("authorization") !== `Bearer ${preflightToken}`
+        ) {
+          return jsonResponse({ error: "not_found" }, 404);
+        }
+
+        try {
+          await getDispatchToken(config, env, fetchImpl);
+        } catch (error) {
+          const detail = describeGitHubAppAuthenticationError(error);
+          console.error(`GitHub App authentication preflight failed: ${detail}`);
+          return jsonResponse({ error: "github_app_authentication_failed", detail }, 502);
+        }
+        return new Response(null, { status: 204 });
+      }
+
       const mirrorId = parseMirrorId(url.pathname, config.worker.path_prefix);
       const mirror = mirrorId ? mirrorIndex.get(mirrorId) : undefined;
       if (!mirror || !mirror.enabled) {
@@ -159,8 +184,9 @@ export function createWorker(config, options = {}) {
       let dispatchToken;
       try {
         dispatchToken = await getDispatchToken(config, env, fetchImpl);
-      } catch {
-        console.error(`GitHub App installation authentication failed for ${mirror.id}.`);
+      } catch (error) {
+        const detail = describeGitHubAppAuthenticationError(error);
+        console.error(`GitHub App installation authentication failed for ${mirror.id}: ${detail}`);
         return jsonResponse({ error: "dispatch_failed" }, 502);
       }
 
