@@ -24,6 +24,25 @@ Bitbucket push
 
 The GitHub Actions job consumes one mirror-specific GitHub Environment containing the two repository-scoped SSH private keys. No operator account credential participates in normal mirror runtime.
 
+Scheduled recovery is a separate fallback path:
+
+```text
+Daily 03:17 UTC schedule
+  -> recovery workflow on the default branch
+  -> select enabled mirrors with scheduled_recovery enabled
+  -> same isolated environment, credentials and mirror runtime
+```
+
+Webhook dispatch and scheduled recovery share the same mirror-specific concurrency group, so two runs for one mirror do not execute concurrently.
+
+## Deployment and activation boundary
+
+The committed registry on `main` is authoritative. The Worker contains a deployment snapshot of that registry and must be deployed from an updated `main` checkout after a registry change has been merged. GitHub `workflow_dispatch` and scheduled workflows also depend on their workflow files being present on the default branch.
+
+Provider provisioning may precede the merge, but a newly created webhook is not operationally active until the reviewed configuration is on `main` and the Worker has been redeployed. Failed deliveries during this controlled activation interval do not modify the Bitbucket source.
+
+The dedicated `mirror-doser.yml` workflow is a temporary legacy boundary. It reuses `scripts/mirror.sh`, but continues to own the aquarium-doser credentials and fallback schedule until that mirror is deliberately registered, tested and migrated to the generic registry and recovery matrix.
+
 ## Management flow
 
 ```text

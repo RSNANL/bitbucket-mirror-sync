@@ -28,8 +28,8 @@ jobs:
       - name: Validate mirror configuration
         run: node scripts/validate-config.mjs
 
-      - name: Parse authentication configuration
-        run: node -e 'JSON.parse(require("fs").readFileSync("config/authentication.json", "utf8"))'
+      - name: Parse configuration schemas
+        run: node -e 'for (const file of ["config/authentication.schema.json", "config/mirrors.schema.json"]) JSON.parse(require("fs").readFileSync(file, "utf8"))'
 
       - name: Run configuration tests
         run: node --test test/*.test.mjs
@@ -39,6 +39,13 @@ jobs:
 
       - name: Validate shell scripts
         run: bash -n scripts/*.sh
+
+      - name: Validate PowerShell scripts and authentication configuration
+        shell: pwsh
+        run: |
+          ./scripts/test-powershell-syntax.ps1
+          Import-Module ./tools/Modules/Mirror.Session.psm1 -Force
+          Test-MirrorAuthenticationConfiguration -RequireConfigured
 
       - name: Test local Git mirroring and prune behavior
         run: scripts/test-mirror-local.sh

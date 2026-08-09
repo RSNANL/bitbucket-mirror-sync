@@ -19,14 +19,17 @@ Configuration-driven infrastructure for disposable GitHub mirrors of authoritati
   validate.yml              Secret-free infrastructure validation.
   mirror.yml                Generic mirror runtime.
   mirror-recovery.yml       Recovery matrix for configured mirrors.
+  mirror-doser.yml          Legacy doser mirror until explicit migration.
 config/
   mirrors.json              Non-secret mirror registry.
   mirrors.schema.json       Mirror configuration contract.
   authentication.json       Non-secret provider identifiers only.
+  authentication.schema.json Authentication configuration contract.
 scripts/
   config-lib.mjs            Mirror configuration validation and derived names.
   mirror.sh                 Generic branches-and-tags mirror runtime.
   test-mirror-local.sh      Local bare-repository integration test.
+  test-powershell-syntax.ps1 PowerShell parser validation.
 worker/
   src/                      Webhook authentication and dispatch Worker.
   test/                     Worker behavior tests.
@@ -47,6 +50,8 @@ docs/
   provisioning.md
   operations.md
 ```
+
+`mirror-doser.yml` remains intentionally independent from the generic registry, credentials and recovery matrix while the new infrastructure is being proven with the vacuum blueprint mirror. It already reuses the generic Git runtime, but must not be removed or given a second generic schedule until the doser is explicitly migrated and its dedicated workflow has been retired.
 
 ## Management authentication
 
@@ -81,7 +86,9 @@ Webhook route:           /webhooks/generic-vacuum-statemachine-blueprint
 scripts/validate-all.sh
 ```
 
-The suite validates non-secret configuration, scans for secret material, tests branch/tag mirroring and pruning with local repositories, exercises Worker authentication and dispatch behavior, and type-checks Worker source when `tsc` is available.
+The suite validates non-secret configuration and schema files, scans for secret material, tests branch/tag mirroring and pruning with local repositories, exercises Worker authentication and dispatch behavior, validates PowerShell syntax when `pwsh` is available, and type-checks Worker source when `tsc` is available.
+
+`validate.yml` runs this validation automatically for every pull request targeting `main` and remains manually dispatchable. It does not consume provider or mirror secrets.
 
 Local operator prerequisites can be checked without provider authentication:
 
@@ -115,6 +122,8 @@ Provisioning is planning-only unless `-Apply` is explicitly supplied:
 ```
 
 The script never commits or pushes infrastructure code. See `docs/provisioning.md`.
+
+The generic recovery workflow runs daily at `03:17 UTC`, but selects only mirrors with both `enabled: true` and `scheduled_recovery: true`. New mirrors remain manual-only until webhook dispatch and pruning have been proven end to end.
 
 ## Versioning convention
 

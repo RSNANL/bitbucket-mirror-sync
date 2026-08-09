@@ -44,13 +44,16 @@ try {
     foreach ($key in @(Get-BitbucketDeployKeys -Repository $mirror.bitbucket_repository -Credentials $bitbucketCredentials | Where-Object { $_.label -like "$sourcePrefix*" })) {
         Remove-BitbucketDeployKey -Repository $mirror.bitbucket_repository -KeyId ([string]$key.id) -Credentials $bitbucketCredentials
     }
-    foreach ($key in @(Get-GitHubDeployKeys -Repository $mirror.github_repository | Where-Object { $_.title -like "$targetPrefix*" })) {
-        Remove-GitHubDeployKey -Repository $mirror.github_repository -KeyId ([long]$key.id)
+    $targetRepository = Get-GitHubRepository -Repository $mirror.github_repository -AllowMissing
+    if ($null -ne $targetRepository) {
+        foreach ($key in @(Get-GitHubDeployKeys -Repository $mirror.github_repository | Where-Object { $_.title -like "$targetPrefix*" })) {
+            Remove-GitHubDeployKey -Repository $mirror.github_repository -KeyId ([long]$key.id)
+        }
     }
     Remove-GitHubEnvironment -InfrastructureRepository $config.dispatch.github_repository -EnvironmentName $environmentName
     Remove-CloudflareWorkerSecret -SecretName $secretBinding
     Remove-MirrorConfigurationEntry -MirrorId $MirrorId -ConfigPath $ConfigPath
-    if ($DeleteTargetRepository) {
+    if ($DeleteTargetRepository -and $null -ne $targetRepository) {
         Remove-GitHubRepository -Repository $mirror.github_repository
     }
     Remove-ProvisioningState -MirrorId $MirrorId

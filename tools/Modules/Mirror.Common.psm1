@@ -114,6 +114,25 @@ function Get-DerivedWebhookSecretBinding {
     return 'WEBHOOK_' + $MirrorId.Replace('-', '_').ToUpperInvariant()
 }
 
+function Resolve-WorkerBaseUrl {
+    param([Parameter(Mandatory)][string]$WorkerBaseUrl)
+
+    $uri = $null
+    if (-not [Uri]::TryCreate($WorkerBaseUrl, [UriKind]::Absolute, [ref]$uri)) {
+        throw 'WorkerBaseUrl must be a valid absolute URI.'
+    }
+    if (
+        $uri.Scheme -ne 'https' -or
+        -not [string]::IsNullOrEmpty($uri.UserInfo) -or
+        $uri.AbsolutePath -ne '/' -or
+        -not [string]::IsNullOrEmpty($uri.Query) -or
+        -not [string]::IsNullOrEmpty($uri.Fragment)
+    ) {
+        throw 'WorkerBaseUrl must be a clean HTTPS origin without credentials, path, query or fragment.'
+    }
+    return $WorkerBaseUrl.TrimEnd('/')
+}
+
 function New-RandomSecret {
     param([int]$ByteLength = 32)
     $bytes = [byte[]]::new($ByteLength)

@@ -26,6 +26,8 @@ GHB_MIRROR_SSH_KEY
 
 Every Bitbucket webhook uses a unique random HMAC secret. The same value exists only in the Bitbucket webhook and its derived Cloudflare Worker secret binding.
 
+The Git runtime accepts only the published Ed25519 SSH host keys for `bitbucket.org` and `github.com`. A runtime scan is compared with the reviewed provider fingerprint before either deploy key is used; a missing or changed host key fails the run closed.
+
 ## Worker request validation
 
 Worker:
@@ -40,6 +42,8 @@ Worker:
 - dispatches only the configured workflow and ref.
 
 The unattended Worker dispatch identity is a dedicated GitHub App installed only on this infrastructure repository with `Actions: write` and mandatory metadata read access. The Worker signs a short-lived JWT with the encrypted `GITHUB_APP_PRIVATE_KEY` binding and requests a repository- and permission-bounded installation token for each dispatch. The installation token expires automatically and no personal access token or management-session credential is persisted.
+
+Pull-request validation is deliberately secret-free. It receives only read access to repository contents, so proposed infrastructure code can be tested without exposing provider access tokens, deploy keys, webhook secrets or the dispatch App private key.
 
 ## Recovery assumptions
 

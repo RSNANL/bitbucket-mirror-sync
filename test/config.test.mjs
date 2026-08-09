@@ -12,7 +12,7 @@ import {
 
 function baseConfig() {
   return {
-    worker: { base_url: null, path_prefix: "/webhooks" },
+    worker: { base_url: "https://worker.example", path_prefix: "/webhooks" },
     dispatch: {
       github_repository: "RSNANL/bitbucket-mirror-sync",
       workflow_file: "mirror.yml",
@@ -36,6 +36,7 @@ function mirror(id = "generic-vacuum-statemachine-blueprint") {
 
 test("accepts an empty inactive configuration before Worker bootstrap", () => {
   const config = baseConfig();
+  config.worker.base_url = null;
   config.dispatch.github_app_client_id = null;
   config.dispatch.github_app_installation_id = null;
   assert.deepEqual(validateConfig(config), []);
@@ -60,6 +61,36 @@ test("rejects duplicate ids, sources and targets", () => {
   assert.match(errors, /Duplicate mirror id/);
   assert.match(errors, /Duplicate Bitbucket source/);
   assert.match(errors, /Duplicate GitHub target/);
+});
+
+test("rejects repository duplicates regardless of letter case", () => {
+  const config = baseConfig();
+  const first = mirror("first");
+  const second = {
+    ...mirror("second"),
+    bitbucket_repository: first.bitbucket_repository.toUpperCase(),
+    github_repository: first.github_repository.toLowerCase()
+  };
+  config.mirrors = [first, second];
+  const errors = validateConfig(config).join("\n");
+  assert.match(errors, /Duplicate Bitbucket source/);
+  assert.match(errors, /Duplicate GitHub target/);
+});
+
+test("requires the Worker base URL to be a clean HTTPS origin", () => {
+  const config = baseConfig();
+  config.worker.base_url = "https://worker.example";
+  assert.deepEqual(validateConfig(config), []);
+  for (const invalid of [
+    "http://worker.example",
+    "https://worker.example/base",
+    "https://user@worker.example",
+    "https://worker.example?query=true",
+    "https://worker.example#fragment"
+  ]) {
+    config.worker.base_url = invalid;
+    assert.match(validateConfig(config).join("\n"), /clean HTTPS origin/);
+  }
 });
 
 test("rejects secret values in configuration", () => {
@@ -128,4 +159,39 @@ test("dispatch identity CLI stores only the public GitHub App identifiers", asyn
   assert.equal(updated.dispatch.github_app_installation_id, 12345678);
   assert.deepEqual(validateConfig(updated), []);
   fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("recovery matrix selects only enabled mirrors with scheduled recovery", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mirror-recovery-test-"));
+  const configPath = path.join(directory, "mirrors.json");
+  const config = baseConfig();
+  config.mirrors = [
+    { ...mirror("scheduled"), scheduled_recovery: true },
+    { ...mirror("manual-only"), scheduled_recovery: false },
+    { ...mirror("disabled"), enabled: false, scheduled_recovery: true }
+  ];
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  const { spawnSync } = await import("node:child_process");
+  const resolved = spawnSync(process.execPath, [
+    "scripts/resolve-recovery-matrix.mjs",
+    configPath
+  ], { cwd: path.resolve("."), encoding: "utf8" });
+  assert.equal(resolved.status, 0, resolved.stderr);
+  assert.deepEqual(JSON.parse(resolved.stdout), [{
+    mirror_id: "scheduled",
+    source_repository: "rsna_nl/scheduled",
+    target_repository: "RSNANL/scheduled-mirror",
+    environment_name: "mirror-scheduled"
+  }]);
+  fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("workflow triggers retain PR validation and daily recovery", () => {
+  const validationWorkflow = fs.readFileSync(".github/workflows/validate.yml", "utf8");
+  assert.match(validationWorkflow, /pull_request:\n\s+branches:\n\s+- main/);
+  assert.match(validationWorkflow, /workflow_dispatch:/);
+
+  const recoveryWorkflow = fs.readFileSync(".github/workflows/mirror-recovery.yml", "utf8");
+  assert.match(recoveryWorkflow, /workflow_dispatch:/);
+  assert.match(recoveryWorkflow, /cron: "17 3 \* \* \*"/);
 });

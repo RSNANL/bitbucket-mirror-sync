@@ -6,6 +6,8 @@ Every management operation starts from an explicitly authenticated PowerShell se
 
 `Connect-MirrorSession.ps1` performs three interactive provider authorizations and keeps the resulting short-lived access tokens only in process-scoped environment variables. Closing PowerShell or running `Disconnect-MirrorSession.ps1` removes the local session credentials. Refresh tokens are never retained or used for silent reauthentication.
 
+Disconnect also attempts to revoke the Cloudflare access token. GitHub and Bitbucket access tokens are removed locally and then expire according to the provider response; disconnect does not claim immediate provider-side revocation for those two tokens.
+
 A new PowerShell process therefore requires a new interactive authorization.
 
 Provider browser sessions remain provider-owned. The tooling always starts a new authorization transaction, but the provider decides whether an already authenticated browser session requires password or multi-factor authentication again.
@@ -19,6 +21,8 @@ Provider browser sessions remain provider-owned. The tooling always starts a new
 - Bitbucket OAuth client ID.
 
 Provider callback URIs and requested OAuth scopes are implementation contracts and are deliberately not user-configurable. Changing them requires a code change and review rather than an operator configuration edit.
+
+The authentication configuration and all PowerShell sources are validated in pull requests. Unknown provider or field names, non-string client IDs and malformed Cloudflare account IDs are rejected before management tooling is used.
 
 ## GitHub
 
