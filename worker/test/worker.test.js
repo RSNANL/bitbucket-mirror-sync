@@ -11,7 +11,7 @@ const config = {
     github_repository: "RSNANL/bitbucket-mirror-sync",
     workflow_file: "mirror.yml",
     ref: "main",
-    github_app_client_id: "Iv23liExampleClientId",
+    github_app_id: 1234567,
     github_app_installation_id: 12345678
   },
   mirrors: [

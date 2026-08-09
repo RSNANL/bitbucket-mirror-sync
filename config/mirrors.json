@@ -7,7 +7,7 @@
     "github_repository": "RSNANL/bitbucket-mirror-sync",
     "workflow_file": "mirror.yml",
     "ref": "main",
-    "github_app_client_id": "Iv23IgZxOkJSwcrLHLR",
+    "github_app_id": 4539860,
     "github_app_installation_id": 152492934
   },
   "mirrors": [

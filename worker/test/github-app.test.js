@@ -12,7 +12,7 @@ import {
 const config = {
   dispatch: {
     github_repository: "RSNANL/bitbucket-mirror-sync",
-    github_app_client_id: "Iv23liExampleClientId",
+    github_app_id: 1234567,
     github_app_installation_id: 12345678
   }
 };
@@ -34,13 +34,13 @@ async function privateKeyPem() {
 }
 
 test("creates an RS256 GitHub App JWT with bounded timestamps", async () => {
-  const jwt = await createGitHubAppJwt("Iv23liExampleClientId", await privateKeyPem(), 1_800_000_000);
+  const jwt = await createGitHubAppJwt(1234567, await privateKeyPem(), 1_800_000_000);
   const [header, payload, signature] = jwt.split(".");
   assert.deepEqual(JSON.parse(Buffer.from(header, "base64url").toString()), { alg: "RS256", typ: "JWT" });
   assert.deepEqual(JSON.parse(Buffer.from(payload, "base64url").toString()), {
     iat: 1_799_999_940,
     exp: 1_800_000_540,
-    iss: "Iv23liExampleClientId"
+    iss: 1234567
   });
   assert.ok(signature.length > 100);
 });
@@ -48,7 +48,7 @@ test("creates an RS256 GitHub App JWT with bounded timestamps", async () => {
 test("accepts the PKCS1 PEM format generated for GitHub Apps", async () => {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const pem = privateKey.export({ format: "pem", type: "pkcs1" }).toString();
-  const jwt = await createGitHubAppJwt("Iv23liExampleClientId", pem);
+  const jwt = await createGitHubAppJwt(1234567, pem);
   assert.equal(jwt.split(".").length, 3);
 });
 
@@ -90,6 +90,20 @@ test("reports safe errors for incomplete identity, invalid keys and unusable tok
     {
       name: "incomplete dispatch identity",
       run: () => getGitHubInstallationToken(config, {}, async () => Response.json({})),
+      message: "GitHub App dispatch identity is incomplete."
+    },
+    {
+      name: "non-numeric App ID",
+      run: () => getGitHubInstallationToken(
+        {
+          dispatch: {
+            ...config.dispatch,
+            github_app_id: /** @type {any} */ ("Iv23liExampleClientId")
+          }
+        },
+        { GITHUB_APP_PRIVATE_KEY: "unused-private-key" },
+        async () => Response.json({})
+      ),
       message: "GitHub App dispatch identity is incomplete."
     },
     {
@@ -138,7 +152,7 @@ test("reports safe errors for incomplete identity, invalid keys and unusable tok
 });
 
 function validApp() {
-  return { client_id: config.dispatch.github_app_client_id };
+  return { id: config.dispatch.github_app_id };
 }
 
 function validInstallation() {
@@ -245,9 +259,9 @@ test("reports the exact failed GitHub App preflight boundary", async (context) =
 test("rejects mismatched, suspended or underprivileged App installation state", async (context) => {
   const cases = [
     {
-      name: "mismatched App client ID",
-      responses: [Response.json({ client_id: "different-client" })],
-      message: "GitHub App JWT identity response did not match the configured client ID."
+      name: "mismatched App ID",
+      responses: [Response.json({ id: 7654321 })],
+      message: "GitHub App JWT identity response did not match the configured App ID."
     },
     {
       name: "mismatched installation identity",

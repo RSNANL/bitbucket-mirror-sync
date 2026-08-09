@@ -23,7 +23,7 @@ const GITHUB_APP_AUTH_PREFLIGHT_PATH = "/_internal/github-app-authentication";
  *     github_repository: string,
  *     workflow_file: string,
  *     ref: string,
- *     github_app_client_id: string | null,
+ *     github_app_id: number | null,
  *     github_app_installation_id: number | null
  *   },
  *   mirrors: Mirror[]
@@ -177,7 +177,7 @@ export function createWorker(config, options = {}) {
       }
 
       if (
-        !config.dispatch.github_app_client_id ||
+        !config.dispatch.github_app_id ||
         !config.dispatch.github_app_installation_id ||
         !env.GITHUB_APP_PRIVATE_KEY
       ) {
