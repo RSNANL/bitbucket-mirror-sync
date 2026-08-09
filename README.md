@@ -98,13 +98,13 @@ Local operator prerequisites can be checked without provider authentication:
 
 ## Provisioning
 
-The Worker uses a dedicated GitHub App installation as its unattended dispatch identity. The app is installed only on `RSNANL/bitbucket-mirror-sync` and has only `Actions: write` plus mandatory metadata read access. Its client and installation IDs are non-secret configuration; its private key exists only as the encrypted `GITHUB_APP_PRIVATE_KEY` Worker binding.
+The Worker uses a dedicated GitHub App installation as its unattended dispatch identity. The app is installed only on `RSNANL/bitbucket-mirror-sync` and has only `Actions: write` plus mandatory metadata read access. Its App and installation IDs are non-secret configuration; its private key exists only as the encrypted `GITHUB_APP_PRIVATE_KEY` Worker binding.
 
 Bootstrap or update the Worker from the interactive management session before provisioning a mirror:
 
 ```powershell
 ./tools/Deploy-MirrorWorker.ps1 `
-  -GitHubAppClientId '<client-id>' `
+  -GitHubAppId <app-id> `
   -GitHubAppInstallationId <installation-id> `
   -GitHubAppPrivateKeyPath '<downloaded-private-key.pem>'
 ```

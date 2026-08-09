@@ -8,17 +8,17 @@ for (let index = 2; index < process.argv.length; index += 2) {
 }
 
 const configPath = args.get("--config") ?? "config/mirrors.json";
-const clientId = args.get("--client-id");
+const appId = Number(args.get("--app-id"));
 const installationId = Number(args.get("--installation-id"));
-if (!clientId || !/^[A-Za-z0-9_-]+$/.test(clientId)) {
-  throw new Error("--client-id must be a GitHub App client ID.");
+if (!Number.isSafeInteger(appId) || appId < 1) {
+  throw new Error("--app-id must be a positive integer.");
 }
 if (!Number.isSafeInteger(installationId) || installationId < 1) {
   throw new Error("--installation-id must be a positive integer.");
 }
 
 const { config, absolutePath } = readConfig(configPath);
-config.dispatch.github_app_client_id = clientId;
+config.dispatch.github_app_id = appId;
 config.dispatch.github_app_installation_id = installationId;
 const errors = validateConfig(config);
 if (errors.length > 0) throw new Error(errors.join("\n"));

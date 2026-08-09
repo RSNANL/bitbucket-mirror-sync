@@ -67,12 +67,12 @@ function wrapPkcs1AsPkcs8(pkcs1) {
 }
 
 /**
- * @param {string} clientId
+ * @param {number} appId
  * @param {string} privateKeyPem
  * @param {number} [nowSeconds]
  */
 export async function createGitHubAppJwt(
-  clientId,
+  appId,
   privateKeyPem,
   nowSeconds = Math.floor(Date.now() / 1000)
 ) {
@@ -90,7 +90,7 @@ export async function createGitHubAppJwt(
   const payload = base64Url(encoder.encode(JSON.stringify({
     iat: nowSeconds - 60,
     exp: nowSeconds + 540,
-    iss: clientId
+    iss: appId
   })));
   const unsignedToken = `${header}.${payload}`;
   const signature = await crypto.subtle.sign(
@@ -145,29 +145,37 @@ async function readGitHubJson(response, operation) {
 /**
  * @param {{ dispatch: {
  *   github_repository: string,
- *   github_app_client_id: string | null,
+ *   github_app_id: number | null,
  *   github_app_installation_id: number | null
  * } }} config
  * @param {{ GITHUB_APP_PRIVATE_KEY?: string }} env
  */
 async function resolveGitHubAppIdentity(config, env) {
-  const clientId = config.dispatch.github_app_client_id;
+  const appId = config.dispatch.github_app_id;
   const installationId = config.dispatch.github_app_installation_id;
   const privateKey = env.GITHUB_APP_PRIVATE_KEY;
-  if (!clientId || !installationId || !privateKey) {
+  if (
+    typeof appId !== "number" ||
+    !Number.isSafeInteger(appId) ||
+    appId < 1 ||
+    typeof installationId !== "number" ||
+    !Number.isSafeInteger(installationId) ||
+    installationId < 1 ||
+    !privateKey
+  ) {
     throw new GitHubAppAuthenticationError("GitHub App dispatch identity is incomplete.");
   }
 
   let jwt;
   try {
-    jwt = await createGitHubAppJwt(clientId, privateKey);
+    jwt = await createGitHubAppJwt(appId, privateKey);
   } catch (error) {
     if (error instanceof GitHubAppAuthenticationError) throw error;
     const errorName = error instanceof Error ? error.name : "UnknownError";
     throw new GitHubAppAuthenticationError(`GitHub App JWT creation failed: ${errorName}.`);
   }
   const [repositoryOwner, repositoryName] = config.dispatch.github_repository.split("/");
-  return { clientId, installationId, jwt, repositoryOwner, repositoryName };
+  return { appId, installationId, jwt, repositoryOwner, repositoryName };
 }
 
 /**
@@ -211,7 +219,7 @@ async function revokeGitHubInstallationToken(token, fetchImpl) {
 /**
  * @param {{ dispatch: {
  *   github_repository: string,
- *   github_app_client_id: string | null,
+ *   github_app_id: number | null,
  *   github_app_installation_id: number | null
  * } }} config
  * @param {{ GITHUB_APP_PRIVATE_KEY?: string }} env
@@ -230,7 +238,7 @@ export async function getGitHubInstallationToken(config, env, fetchImpl) {
 /**
  * @param {{ dispatch: {
  *   github_repository: string,
- *   github_app_client_id: string | null,
+ *   github_app_id: number | null,
  *   github_app_installation_id: number | null
  * } }} config
  * @param {{ GITHUB_APP_PRIVATE_KEY?: string }} env
@@ -246,9 +254,9 @@ export async function preflightGitHubAppAuthentication(config, env, fetchImpl) {
     appOperation
   );
   const app = await readGitHubJson(appResponse, appOperation);
-  if (!app || app.client_id !== identity.clientId) {
+  if (!app || app.id !== identity.appId) {
     throw new GitHubAppAuthenticationError(
-      "GitHub App JWT identity response did not match the configured client ID."
+      "GitHub App JWT identity response did not match the configured App ID."
     );
   }
 

@@ -36,7 +36,7 @@ Run the deployment once without `-Apply` and review the plan:
 
 ```powershell
 ./tools/Deploy-MirrorWorker.ps1 `
-  -GitHubAppClientId '<client-id>' `
+  -GitHubAppId <app-id> `
   -GitHubAppInstallationId <installation-id> `
   -GitHubAppPrivateKeyPath '<downloaded-private-key.pem>'
 ```

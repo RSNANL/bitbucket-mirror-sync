@@ -84,4 +84,4 @@ Management credentials are separate from the narrowly scoped machine credentials
 
 These values exist only in provider-managed encrypted secret stores and never grant general access to the operator's provider accounts.
 
-The dispatch GitHub App is separate from the management GitHub App. It is installed only on `RSNANL/bitbucket-mirror-sync`, has only `Actions: write` plus mandatory metadata read access, and does not use Device Flow or a user access token. Its client and installation IDs are non-secret values in `config/mirrors.json`; its private key is stored only as the Cloudflare Worker secret `GITHUB_APP_PRIVATE_KEY`.
+The dispatch GitHub App is separate from the management GitHub App. It is installed only on `RSNANL/bitbucket-mirror-sync`, has only `Actions: write` plus mandatory metadata read access, and does not use Device Flow or a user access token. Its numeric App ID and installation ID are non-secret values in `config/mirrors.json`; the App ID is the JWT issuer and is distinct from the alphanumeric OAuth client ID. Its private key is stored only as the Cloudflare Worker secret `GITHUB_APP_PRIVATE_KEY`.

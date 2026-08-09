@@ -18,7 +18,7 @@ $mirror = $config.mirrors | Where-Object { $_.id -eq $MirrorId } | Select-Object
 if (-not $mirror) { throw "Mirror is not configured: $MirrorId" }
 if ($Dispatch -and -not $mirror.enabled) { throw "Mirror is disabled and cannot be dispatched: $MirrorId" }
 if (
-    [string]::IsNullOrWhiteSpace([string]$config.dispatch.github_app_client_id) -or
+    $null -eq $config.dispatch.github_app_id -or
     $null -eq $config.dispatch.github_app_installation_id
 ) {
     throw 'GitHub App dispatch identity is not configured.'
