@@ -1,5 +1,13 @@
 // @ts-check
 
+export class GitHubAppAuthenticationError extends Error {
+  /** @param {string} message */
+  constructor(message) {
+    super(message);
+    this.name = "GitHubAppAuthenticationError";
+  }
+}
+
 /** @param {Uint8Array} bytes */
 function base64Url(bytes) {
   let binary = "";
@@ -37,7 +45,7 @@ function decodePem(pem) {
     /^-----BEGIN (RSA )?PRIVATE KEY-----([A-Za-z0-9+/=\r\n]+)-----END (RSA )?PRIVATE KEY-----$/
   );
   if (!match || Boolean(match[1]) !== Boolean(match[3])) {
-    throw new Error("GitHub App private key is not a supported PEM private key.");
+    throw new GitHubAppAuthenticationError("GitHub App private key is not a supported PEM private key.");
   }
   const binary = atob(match[2].replace(/\s/g, ""));
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -103,34 +111,59 @@ export async function getGitHubInstallationToken(config, env, fetchImpl) {
   const installationId = config.dispatch.github_app_installation_id;
   const privateKey = env.GITHUB_APP_PRIVATE_KEY;
   if (!clientId || !installationId || !privateKey) {
-    throw new Error("GitHub App dispatch identity is incomplete.");
+    throw new GitHubAppAuthenticationError("GitHub App dispatch identity is incomplete.");
   }
 
-  const jwt = await createGitHubAppJwt(clientId, privateKey);
-  const repositoryName = config.dispatch.github_repository.split("/")[1];
-  const response = await fetchImpl(
-    `https://api.github.com/app/installations/${installationId}/access_tokens`,
-    {
-      method: "POST",
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${jwt}`,
-        "content-type": "application/json",
-        "user-agent": "bitbucket-mirror-dispatch-worker",
-        "x-github-api-version": "2022-11-28"
-      },
-      body: JSON.stringify({
-        repositories: [repositoryName],
-        permissions: { actions: "write" }
-      })
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`GitHub App installation token request failed: HTTP ${response.status}.`);
+  let jwt;
+  try {
+    jwt = await createGitHubAppJwt(clientId, privateKey);
+  } catch (error) {
+    if (error instanceof GitHubAppAuthenticationError) throw error;
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    throw new GitHubAppAuthenticationError(`GitHub App JWT creation failed: ${errorName}.`);
   }
-  const body = await response.json();
+  const repositoryName = config.dispatch.github_repository.split("/")[1];
+  let response;
+  try {
+    response = await fetchImpl(
+      `https://api.github.com/app/installations/${installationId}/access_tokens`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: `Bearer ${jwt}`,
+          "content-type": "application/json",
+          "user-agent": "bitbucket-mirror-dispatch-worker",
+          "x-github-api-version": "2022-11-28"
+        },
+        body: JSON.stringify({
+          repositories: [repositoryName],
+          permissions: { actions: "write" }
+        })
+      }
+    );
+  } catch {
+    throw new GitHubAppAuthenticationError("GitHub App installation token request failed: transport error.");
+  }
+  if (!response.ok) {
+    throw new GitHubAppAuthenticationError(
+      `GitHub App installation token request failed: HTTP ${response.status}.`
+    );
+  }
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw new GitHubAppAuthenticationError("GitHub App installation token response was not valid JSON.");
+  }
   if (!body || typeof body.token !== "string" || !body.token) {
-    throw new Error("GitHub App installation token response did not contain a token.");
+    throw new GitHubAppAuthenticationError("GitHub App installation token response did not contain a token.");
   }
   return body.token;
+}
+
+/** @param {unknown} error */
+export function describeGitHubAppAuthenticationError(error) {
+  if (error instanceof GitHubAppAuthenticationError) return error.message;
+  return "GitHub App installation authentication failed: unexpected error.";
 }
