@@ -38,7 +38,7 @@ tools/
   Disconnect-MirrorSession.ps1
   Modules/                  Provider and session modules.
   Deploy-MirrorWorker.ps1   Session-scoped Worker deployment and bootstrap.
-  New-Mirror.ps1            Mirror provisioning.
+  New-Mirror.ps1            New and existing-target mirror provisioning.
   Test-Mirror.ps1           Resource, dispatch and mirror sync validation.
   Rotate-MirrorKeys.ps1     Two-phase key rotation.
   Repair-Mirror.ps1         Mirror and credential repair.
@@ -121,7 +121,7 @@ Provisioning is planning-only unless `-Apply` is explicitly supplied:
   -WorkerBaseUrl 'https://<worker>.<subdomain>.workers.dev'
 ```
 
-The script never commits or pushes infrastructure code. See `docs/provisioning.md`.
+The script never commits or pushes infrastructure code. Existing private mirror targets can be adopted explicitly with `-UseExistingTarget`; their legacy resources remain untouched until the generic cutover is validated. See `docs/provisioning.md`.
 
 The generic recovery workflow runs daily at `03:17 UTC`, but selects only mirrors with both `enabled: true` and `scheduled_recovery: true`. New mirrors remain manual-only until webhook dispatch and pruning have been proven end to end.
 

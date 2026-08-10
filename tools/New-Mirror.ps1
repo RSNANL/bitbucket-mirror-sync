@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string]$GitHubRepository,
     [string]$WorkerBaseUrl,
     [string]$ConfigPath = 'config/mirrors.json',
+    [switch]$UseExistingTarget,
     [switch]$ScheduledRecovery,
     [switch]$Apply
 )
@@ -45,6 +46,7 @@ Write-Host 'Provisioning plan:'
 Write-Host "  Mirror id:             $MirrorId"
 Write-Host "  Bitbucket source:      $BitbucketRepository"
 Write-Host "  GitHub target:         $GitHubRepository"
+Write-Host "  GitHub target mode:    $(if ($UseExistingTarget) { 'Use existing private repository' } else { 'Create private repository' })"
 Write-Host "  GitHub environment:    $environmentName"
 Write-Host "  Worker secret binding: $secretBinding"
 Write-Host "  Webhook URL:           $webhookUrl"
@@ -80,15 +82,30 @@ try {
     if ($null -eq (Get-BitbucketRepository -Repository $BitbucketRepository -Credentials $bitbucketCredentials -AllowMissing)) {
         throw "Bitbucket source repository does not exist or is inaccessible: $BitbucketRepository"
     }
-    if ($null -ne (Get-GitHubRepository -Repository $GitHubRepository -AllowMissing)) {
-        throw "GitHub target repository already exists: $GitHubRepository"
+    $existingTargetRepository = Get-GitHubRepository -Repository $GitHubRepository -AllowMissing
+    if ($UseExistingTarget) {
+        if ($null -eq $existingTargetRepository) {
+            throw "GitHub target repository does not exist: $GitHubRepository"
+        }
+        if (-not [bool]$existingTargetRepository.private) {
+            throw "Existing GitHub target repository must be private: $GitHubRepository"
+        }
+    }
+    elseif ($null -ne $existingTargetRepository) {
+        throw "GitHub target repository already exists: $GitHubRepository. Use -UseExistingTarget only for an intentional migration."
     }
 
     $sourceKey = New-SshKeyPair -Directory $tempDirectory -FileName 'bitbucket_source' -Label $sourceKeyLabel
     $targetKey = New-SshKeyPair -Directory $tempDirectory -FileName 'github_target' -Label $targetKeyTitle
 
-    $targetRepository = New-GitHubMirrorRepository -Repository $GitHubRepository
-    $state.github_repository_created = $true
+    if ($UseExistingTarget) {
+        $targetRepository = $existingTargetRepository
+        $state.github_repository_reused = $true
+    }
+    else {
+        $targetRepository = New-GitHubMirrorRepository -Repository $GitHubRepository
+        $state.github_repository_created = $true
+    }
     $state.github_repository_id = $targetRepository.id
     Write-ProvisioningState -MirrorId $MirrorId -State $state
 
