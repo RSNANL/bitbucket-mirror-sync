@@ -341,6 +341,11 @@ function openDialog({ eyebrow, title, note, submit = 'Continue', danger = false,
   elements.dialog.showModal();
 }
 
+function closeDialog() {
+  state.dialogAction = null;
+  if (elements.dialog.open) elements.dialog.close();
+}
+
 function formValues(form) {
   const values = {};
   for (const [name, value] of new FormData(form).entries()) values[name] = value;
@@ -464,13 +469,29 @@ function openWorkerDialog() {
 }
 
 elements.form.addEventListener('submit', (event) => {
-  if (event.submitter?.value !== 'default') return;
   event.preventDefault();
   if (!elements.form.reportValidity()) return;
   const values = formValues(elements.form);
-  elements.dialog.close();
-  state.dialogAction?.(values);
-  state.dialogAction = null;
+  const action = state.dialogAction;
+  closeDialog();
+  action?.(values);
+});
+
+for (const button of elements.dialog.querySelectorAll('[data-dialog-dismiss]')) {
+  button.addEventListener('click', closeDialog);
+}
+
+elements.dialog.addEventListener('cancel', (event) => {
+  event.preventDefault();
+  closeDialog();
+});
+
+elements.dialog.addEventListener('click', (event) => {
+  if (event.target !== elements.dialog) return;
+  const bounds = elements.dialog.getBoundingClientRect();
+  const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+    && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+  if (!inside) closeDialog();
 });
 
 document.querySelector('#new-mirror').addEventListener('click', openNewMirrorDialog);

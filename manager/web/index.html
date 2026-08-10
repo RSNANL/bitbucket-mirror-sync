@@ -101,12 +101,12 @@
       <form method="dialog" id="action-form">
         <div class="dialog-heading">
           <div><p class="eyebrow" id="dialog-eyebrow">Mirror operation</p><h2 id="dialog-title">Action</h2></div>
-          <button class="icon-button" value="cancel" aria-label="Close dialog" type="submit">×</button>
+          <button class="icon-button" data-dialog-dismiss aria-label="Close dialog" type="button">×</button>
         </div>
         <div id="dialog-fields" class="form-grid"></div>
         <p class="dialog-note" id="dialog-note"></p>
         <div class="dialog-actions">
-          <button class="button ghost" value="cancel" type="submit">Cancel</button>
+          <button class="button ghost" data-dialog-dismiss type="button">Cancel</button>
           <button class="button primary" id="dialog-submit" value="default" type="submit">Continue</button>
         </div>
       </form>

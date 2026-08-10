@@ -74,3 +74,12 @@ test('web app exposes provider, mirror, operation, and activity surfaces', () =>
   assert.match(managerHtml, /id="cancel-operation"/);
   assert.match(managerDocs, /only authoritative non-secret registry/);
 });
+
+test('dialogs can be dismissed without satisfying required fields', () => {
+  assert.equal((managerHtml.match(/data-dialog-dismiss[^>]*type="button"/g) || []).length, 2);
+  assert.doesNotMatch(managerHtml, /value="cancel"[^>]*type="submit"/);
+  assert.match(managerApp, /querySelectorAll\('\[data-dialog-dismiss\]'\)/);
+  assert.match(managerApp, /addEventListener\('cancel'/);
+  assert.match(managerApp, /event\.target !== elements\.dialog/);
+  assert.match(managerApp, /function closeDialog\(\)/);
+});
