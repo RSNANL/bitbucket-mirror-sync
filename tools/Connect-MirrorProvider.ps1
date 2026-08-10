@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][ValidateSet('GitHub', 'Cloudflare', 'Bitbucket')][string]$Provider,
     [AllowNull()][string]$BitbucketClientSecret,
     [switch]$NoBrowser,
-    [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents,
+    [AllowNull()][string]$AuthorizationEventKey,
     [string]$AuthenticationConfigPath = 'config/authentication.json'
 )
 
@@ -15,9 +15,9 @@ Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Session.psm1') -Force
 $configuration = Get-MirrorAuthenticationConfiguration -ConfigPath $AuthenticationConfigPath
 
 switch ($Provider) {
-    'GitHub' { Connect-GitHubSession -Configuration $configuration -NoBrowser:$NoBrowser -AuthorizationEvents $AuthorizationEvents }
-    'Cloudflare' { Connect-CloudflareSession -Configuration $configuration -NoBrowser:$NoBrowser -AuthorizationEvents $AuthorizationEvents }
-    'Bitbucket' { Connect-BitbucketSession -Configuration $configuration -ClientSecret $BitbucketClientSecret -NoBrowser:$NoBrowser -AuthorizationEvents $AuthorizationEvents }
+    'GitHub' { Connect-GitHubSession -Configuration $configuration -NoBrowser:$NoBrowser -AuthorizationEventKey $AuthorizationEventKey }
+    'Cloudflare' { Connect-CloudflareSession -Configuration $configuration -NoBrowser:$NoBrowser -AuthorizationEventKey $AuthorizationEventKey }
+    'Bitbucket' { Connect-BitbucketSession -Configuration $configuration -ClientSecret $BitbucketClientSecret -NoBrowser:$NoBrowser -AuthorizationEventKey $AuthorizationEventKey }
 }
 
 $BitbucketClientSecret = $null

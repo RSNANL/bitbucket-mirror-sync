@@ -7,6 +7,9 @@ const state = {
   pendingPlan: null,
   authPopup: null,
   authorization: null,
+  heartbeat: null,
+  runtimeId: null,
+  hostOnline: true,
 };
 
 const elements = {
@@ -19,6 +22,7 @@ const elements = {
   operationName: document.querySelector('#operation-name'),
   operationLog: document.querySelector('#operation-log'),
   notice: document.querySelector('#notice'),
+  cancelOperation: document.querySelector('#cancel-operation'),
   applyPlan: document.querySelector('#apply-plan'),
   dialog: document.querySelector('#action-dialog'),
   form: document.querySelector('#action-form'),
@@ -81,6 +85,27 @@ function closeAuthenticationPopup() {
   state.authPopup = null;
 }
 
+function setHostUnavailable() {
+  if (!state.hostOnline) return;
+  state.hostOnline = false;
+  closeAuthenticationPopup();
+  renderAuthorization(null);
+  if (state.poller) clearInterval(state.poller);
+  state.poller = null;
+  elements.cancelOperation.classList.add('hidden');
+  elements.applyPlan.classList.add('hidden');
+  elements.operationState.className = 'operation-state failed';
+  elements.operationState.textContent = 'Stopped';
+  elements.operationName.textContent = 'Mirror Manager host stopped';
+  elements.operationLog.textContent = 'The local host stopped and cleared its in-process management session. Restart it to continue.';
+  showError('Mirror Manager is no longer running. This page will reconnect automatically after the host is restarted.');
+  if (state.snapshot) {
+    renderProviders();
+    renderMirrors();
+  }
+  for (const button of document.querySelectorAll('button')) button.disabled = true;
+}
+
 function renderAuthorization(authorization) {
   state.authorization = authorization || null;
   elements.authorization.classList.toggle('hidden', !authorization);
@@ -124,7 +149,7 @@ function renderProviders() {
     card.querySelector('p').textContent = provider.authenticated ? formatExpiry(provider.expires_at) : 'Authorization required';
     const button = card.querySelector('button');
     button.textContent = provider.authenticated ? 'Connected' : 'Connect';
-    button.disabled = provider.authenticated || state.operation?.status === 'running';
+    button.disabled = !state.hostOnline || provider.authenticated || state.operation?.status === 'running';
     button.addEventListener('click', () => connectProvider(provider.id));
     elements.providers.append(card);
   }
@@ -157,7 +182,7 @@ function renderMirrors() {
     card.querySelector('.validate').addEventListener('click', () => runOperation('validate', { MirrorId: mirror.id }));
     card.querySelector('.dispatch').addEventListener('click', () => runOperation('dispatch', { MirrorId: mirror.id, Dispatch: true }));
     card.querySelector('.manage').addEventListener('click', () => openManageDialog(mirror));
-    for (const button of card.querySelectorAll('button')) button.disabled = state.operation?.status === 'running';
+    for (const button of card.querySelectorAll('button')) button.disabled = !state.hostOnline || state.operation?.status === 'running';
     elements.mirrorList.append(card);
   }
 }
@@ -168,13 +193,14 @@ function renderOperation(operation) {
   elements.operationState.className = `operation-state ${status}`;
   elements.operationState.textContent = status[0].toUpperCase() + status.slice(1);
   elements.operationName.textContent = operation ? operation.action : 'No operation running';
+  elements.cancelOperation.classList.toggle('hidden', operation?.status !== 'running');
   elements.applyPlan.classList.toggle('hidden', !(operation?.status === 'succeeded' && state.pendingPlan));
   if (operation?.action === 'connect-provider') {
     if (operation.authorization?.authorization_uri !== state.authorization?.authorization_uri) {
       renderAuthorization(operation.authorization);
       if (operation.authorization) navigateAuthenticationPopup(operation.authorization.authorization_uri);
     }
-    if (operation.status === 'succeeded' || operation.status === 'failed') {
+    if (['succeeded', 'failed', 'cancelled'].includes(operation.status)) {
       closeAuthenticationPopup();
       renderAuthorization(null);
     }
@@ -210,6 +236,35 @@ async function pollOperation() {
   } catch (error) {
     clearInterval(state.poller);
     state.poller = null;
+    showError(error);
+  }
+}
+
+async function checkHost() {
+  try {
+    const health = await api('/api/health');
+    if (state.runtimeId && health.runtime_id !== state.runtimeId) {
+      window.location.reload();
+      return;
+    }
+    if (!state.hostOnline) window.location.reload();
+  } catch {
+    setHostUnavailable();
+  }
+}
+
+async function cancelOperation() {
+  clearError();
+  try {
+    const operation = await api('/api/operation/cancel', {
+      method: 'POST',
+      body: '{}',
+    });
+    closeAuthenticationPopup();
+    renderAuthorization(null);
+    renderOperation(operation);
+    await refreshSnapshot();
+  } catch (error) {
     showError(error);
   }
 }
@@ -438,6 +493,7 @@ document.querySelector('#disconnect').addEventListener('click', () => openDialog
   onSubmit: () => runOperation('disconnect-session'),
 }));
 elements.copyAuthorizationCode.addEventListener('click', copyAuthorizationCode);
+elements.cancelOperation.addEventListener('click', cancelOperation);
 elements.openAuthorization.addEventListener('click', () => {
   if (!state.authorization) return;
   closeAuthenticationPopup();
@@ -453,14 +509,42 @@ for (const link of document.querySelectorAll('.nav-link')) {
 
 async function initialize() {
   try {
-    state.token = (await api('/api/bootstrap')).request_token;
+    const bootstrap = await api('/api/bootstrap');
+    state.token = bootstrap.request_token;
+    state.runtimeId = bootstrap.runtime_id;
+    state.hostOnline = true;
     await refreshSnapshot();
     const operation = await api('/api/operation');
     renderOperation(operation);
     if (operation?.status === 'running') state.poller = setInterval(pollOperation, 800);
+    state.heartbeat = setInterval(checkHost, 1000);
   } catch (error) {
     showError(error);
   }
 }
 
-initialize();
+window.addEventListener('pagehide', closeAuthenticationPopup);
+
+async function startExclusiveClient() {
+  if (!navigator.locks?.request) {
+    await initialize();
+    return;
+  }
+
+  await navigator.locks.request('mirror-manager-active-ui', { ifAvailable: true }, async (lock) => {
+    if (!lock) {
+      window.close();
+      elements.operationState.className = 'operation-state failed';
+      elements.operationState.textContent = 'Duplicate';
+      elements.operationName.textContent = 'Mirror Manager is already open';
+      elements.operationLog.textContent = 'Use the existing Mirror Manager tab and close this duplicate.';
+      showError('Another Mirror Manager tab already owns this local session.');
+      return;
+    }
+
+    await initialize();
+    await new Promise((resolve) => window.addEventListener('pagehide', resolve, { once: true }));
+  });
+}
+
+startExclusiveClient();

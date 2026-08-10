@@ -65,7 +65,7 @@ section { scroll-margin-top: 20px; margin-top: 46px; }
 .activity-actions { display: flex; align-items: center; gap: 10px; }
 .operation-state.running { color: var(--warning); border-color: rgba(240, 189, 102, .35); }
 .operation-state.succeeded { color: var(--accent); border-color: rgba(86, 224, 187, .35); }
-.operation-state.failed { color: var(--danger); border-color: rgba(255, 127, 127, .35); }
+.operation-state.failed, .operation-state.cancelled { color: var(--danger); border-color: rgba(255, 127, 127, .35); }
 
 .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .provider-card, .mirror-card { border: 1px solid var(--line-soft); background: linear-gradient(145deg, rgba(21, 29, 39, .95), rgba(15, 21, 29, .95)); box-shadow: var(--shadow); }

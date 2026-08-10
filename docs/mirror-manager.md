@@ -10,9 +10,9 @@ Run from the infrastructure repository with PowerShell 7:
 ./tools/Start-MirrorManager.ps1
 ```
 
-The host opens `http://127.0.0.1:53681` in the default browser. Use `-NoBrowser` to start without opening a window or `-Port` to select another loopback port.
+The host opens `http://127.0.0.1:53681` in the default browser when no existing Manager tab reconnects during startup. A live tab automatically reconnects after a host restart, so repeated starts do not keep opening new active sessions. Use `-NoBrowser` to start without opening a window or `-Port` to select another loopback port.
 
-Stop the host with `Ctrl+C`. The host stops an active operation and clears its process-scoped session credentials before exiting.
+Stop the host with `Ctrl+C`. The listener uses an interruptible wait, stops an active operation and clears its process-scoped session credentials before exiting. The UI detects that shutdown, closes its provider popup and shows the stopped state. Restarting the host reloads the existing tab against the new process. A browser-owned main tab cannot be closed programmatically; close that tab manually when the Manager is no longer needed.
 
 ## Operator workflow
 
@@ -22,6 +22,8 @@ Stop the host with `Ctrl+C`. The host stops an active operation and clears its p
 4. For plan/apply operations, use **Apply reviewed plan** only after the planning pass succeeds.
 5. Validate the affected mirror and review any `config/mirrors.json` diff.
 6. Stop or explicitly disconnect the management session when finished.
+
+An active operation can be cancelled with **Stop operation**. Cancellation stops the operation runspace and clears transient authorization state without discarding provider sessions that were already established.
 
 GitHub uses Device Flow. Mirror Manager opens the authorization page in a compact popup and shows the device code with a copy action in the main interface. Cloudflare and Bitbucket use fixed loopback callbacks on ports `53682` and `53683`. Because every provider window is opened by the interface, it closes automatically after successful authentication. When the browser blocks the initial popup, use **Open authorization** in the visible authorization panel.
 

@@ -63,26 +63,28 @@ foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-Mirror
 }
 
 $authorizationEvents = [Collections.Concurrent.ConcurrentQueue[object]]::new()
+$authorizationEventKey = "MirrorManager.Authorization.Test.$([Guid]::NewGuid().ToString('N'))"
+[AppDomain]::CurrentDomain.SetData($authorizationEventKey, $authorizationEvents)
 $authorizationPowerShell = [PowerShell]::Create()
 try {
     [void]$authorizationPowerShell.AddScript(@'
 param(
     [string]$SessionModulePath,
-    [Collections.Concurrent.ConcurrentQueue[object]]$Events
+    [string]$EventKey
 )
 Import-Module $SessionModulePath -Force
 $sessionModule = Get-Module 'Mirror.Session'
 & $sessionModule {
-    param([Collections.Concurrent.ConcurrentQueue[object]]$Queue)
+    param([string]$AuthorizationEventKey)
     Write-ManagerAuthorization `
         -Provider 'GitHub' `
         -AuthorizationUri 'https://github.com/login/device' `
         -UserCode 'TEST-CODE' `
-        -AuthorizationEvents $Queue
-} $Events
+        -AuthorizationEventKey $AuthorizationEventKey
+} $EventKey
 '@)
     [void]$authorizationPowerShell.AddArgument((Join-Path $RepositoryRoot 'tools/Modules/Mirror.Session.psm1'))
-    [void]$authorizationPowerShell.AddArgument($authorizationEvents)
+    [void]$authorizationPowerShell.AddArgument($authorizationEventKey)
     $authorizationAsync = $authorizationPowerShell.BeginInvoke()
     if (-not $authorizationAsync.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds(5))) {
         throw 'The authorization event producer did not complete.'
@@ -104,6 +106,7 @@ if (
 ) {
     throw 'The authorization event changed while crossing the Mirror Manager runspace boundary.'
 }
+[AppDomain]::CurrentDomain.SetData($authorizationEventKey, $null)
 
 $managerServerPath = Join-Path $RepositoryRoot 'tools/Start-MirrorManager.ps1'
 $managerServerTokens = $null
@@ -127,6 +130,55 @@ if ($null -eq $loopbackFunctionAst) {
 }
 
 . ([scriptblock]::Create($loopbackFunctionAst.Extent.Text))
+
+foreach ($functionName in @(
+    'Clear-ManagerAuthorizationChannel',
+    'Receive-ManagerOperationStreams',
+    'Stop-ManagerOperation',
+    'Get-ManagerOperationState',
+    'Start-ManagerOperation'
+)) {
+    $functionAst = $managerServerAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq $functionName
+    }, $true)
+    if ($null -eq $functionAst) {
+        throw "$functionName was not found in Start-MirrorManager.ps1."
+    }
+    . ([scriptblock]::Create($functionAst.Extent.Text))
+}
+
+$script:operation = $null
+Write-Host 'Testing the real Mirror Manager provider-operation boundary.'
+try {
+    [void](Start-ManagerOperation -Action 'connect-provider' -Arguments @{ Provider = 'Cloudflare' })
+    $authorizationDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
+    do {
+        Start-Sleep -Milliseconds 100
+        $operationState = Get-ManagerOperationState
+    } while ($null -eq $operationState.authorization -and $operationState.status -eq 'running' -and [DateTimeOffset]::UtcNow -lt $authorizationDeadline)
+
+    if ($operationState.status -ne 'running') {
+        throw "The real provider operation stopped before authorization became ready: $($operationState.error)"
+    }
+    if (
+        $operationState.authorization.provider -ne 'cloudflare' -or
+        $operationState.authorization.authorization_uri -notlike 'https://dash.cloudflare.com/oauth2/auth?*'
+    ) {
+        throw 'The real provider operation did not deliver its authorization event to Mirror Manager.'
+    }
+    $cancellationEventKey = $operation.AuthorizationEventKey
+}
+finally {
+    if ($null -ne $operation -and $operation.Status -eq 'running') { Stop-ManagerOperation }
+}
+if ($operation.Status -ne 'cancelled' -or $null -eq $operation.CompletedAt -or $null -ne $operation.Authorization) {
+    throw 'Mirror Manager did not transition the active operation to a clean cancelled state.'
+}
+if ($null -ne [AppDomain]::CurrentDomain.GetData($cancellationEventKey)) {
+    throw 'Mirror Manager retained an authorization event channel after cancellation.'
+}
 
 foreach ($addressText in @('127.0.0.1', '::1', '::ffff:127.0.0.1')) {
     $endpoint = [Net.IPEndPoint]::new([Net.IPAddress]::Parse($addressText), 49152)

@@ -201,10 +201,15 @@ function Write-ManagerAuthorization {
         [Parameter(Mandatory)][string]$Provider,
         [Parameter(Mandatory)][string]$AuthorizationUri,
         [AllowNull()][string]$UserCode,
-        [Parameter(Mandatory)][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
+        [Parameter(Mandatory)][string]$AuthorizationEventKey
     )
 
-    $AuthorizationEvents.Enqueue([pscustomobject][ordered]@{
+    $authorizationEvents = [AppDomain]::CurrentDomain.GetData($AuthorizationEventKey)
+    if ($authorizationEvents -isnot [Collections.Concurrent.ConcurrentQueue[object]]) {
+        throw 'Mirror Manager authorization event channel is unavailable.'
+    }
+
+    $authorizationEvents.Enqueue([pscustomobject][ordered]@{
         provider = $Provider.ToLowerInvariant()
         authorization_uri = $AuthorizationUri
         user_code = if ([string]::IsNullOrWhiteSpace($UserCode)) { $null } else { $UserCode }
@@ -360,7 +365,7 @@ function Connect-GitHubSession {
     param(
         [Parameter(Mandatory)][object]$Configuration,
         [switch]$NoBrowser,
-        [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
+        [AllowNull()][string]$AuthorizationEventKey
     )
 
     if (Test-PersistentGitHubCredential) {
@@ -385,8 +390,8 @@ function Connect-GitHubSession {
     Write-Host "GitHub device code: $userCode"
     Write-Host "Authorize at: $verificationUri"
     if ($NoBrowser) {
-        if ($null -eq $AuthorizationEvents) { throw 'Mirror Manager authorization event queue is required in no-browser mode.' }
-        Write-ManagerAuthorization -Provider 'GitHub' -AuthorizationUri $verificationUri -UserCode $userCode -AuthorizationEvents $AuthorizationEvents
+        if ([string]::IsNullOrWhiteSpace($AuthorizationEventKey)) { throw 'Mirror Manager authorization event channel is required in no-browser mode.' }
+        Write-ManagerAuthorization -Provider 'GitHub' -AuthorizationUri $verificationUri -UserCode $userCode -AuthorizationEventKey $AuthorizationEventKey
     }
     Open-ProviderAuthorization -Uri $verificationUri -NoBrowser:$NoBrowser
 
@@ -442,7 +447,7 @@ function Connect-CloudflareSession {
     param(
         [Parameter(Mandatory)][object]$Configuration,
         [switch]$NoBrowser,
-        [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
+        [AllowNull()][string]$AuthorizationEventKey
     )
 
     if ([Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN', 'Process')) {
@@ -464,8 +469,8 @@ function Connect-CloudflareSession {
     }))
 
     if ($NoBrowser) {
-        if ($null -eq $AuthorizationEvents) { throw 'Mirror Manager authorization event queue is required in no-browser mode.' }
-        Write-ManagerAuthorization -Provider 'Cloudflare' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEvents $AuthorizationEvents
+        if ([string]::IsNullOrWhiteSpace($AuthorizationEventKey)) { throw 'Mirror Manager authorization event channel is required in no-browser mode.' }
+        Write-ManagerAuthorization -Provider 'Cloudflare' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEventKey $AuthorizationEventKey
     }
     $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
     $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://dash.cloudflare.com/oauth2/token' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
@@ -501,7 +506,7 @@ function Connect-BitbucketSession {
         [Parameter(Mandatory)][object]$Configuration,
         [AllowNull()][string]$ClientSecret,
         [switch]$NoBrowser,
-        [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
+        [AllowNull()][string]$AuthorizationEventKey
     )
 
     if ([Environment]::GetEnvironmentVariable('BITBUCKET_API_TOKEN', 'Process')) {
@@ -524,8 +529,8 @@ function Connect-BitbucketSession {
             state = $state
         }))
         if ($NoBrowser) {
-            if ($null -eq $AuthorizationEvents) { throw 'Mirror Manager authorization event queue is required in no-browser mode.' }
-            Write-ManagerAuthorization -Provider 'Bitbucket' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEvents $AuthorizationEvents
+            if ([string]::IsNullOrWhiteSpace($AuthorizationEventKey)) { throw 'Mirror Manager authorization event channel is required in no-browser mode.' }
+            Write-ManagerAuthorization -Provider 'Bitbucket' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEventKey $AuthorizationEventKey
         }
         $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
 

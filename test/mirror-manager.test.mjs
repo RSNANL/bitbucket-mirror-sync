@@ -28,19 +28,23 @@ test('local host enforces the loopback, origin, token, and operation boundaries'
   assert.match(server, /X-Mirror-Manager-Token/);
   assert.match(server, /The request origin is not the active Mirror Manager/);
   assert.match(server, /Another Mirror Manager operation is already running/);
+  assert.match(server, /GetContextAsync\(\)/);
+  assert.match(server, /\/api\/operation\/cancel/);
+  assert.match(server, /\/api\/health/);
   assert.match(server, /Content-Security-Policy/);
 });
 
 test('loopback OAuth completion attempts to close its browser window', () => {
   assert.match(session, /window\.close\(\)/);
   assert.match(session, /\[AllowNull\(\)\]\[string\]\$ClientSecret/);
-  assert.match(session, /ConcurrentQueue\[object\]\]\$AuthorizationEvents/);
-  assert.match(session, /\$AuthorizationEvents\.Enqueue/);
+  assert.match(session, /CurrentDomain\.GetData\(\$AuthorizationEventKey\)/);
+  assert.match(session, /\$authorizationEvents\.Enqueue/);
   assert.doesNotMatch(session, /MIRROR_MANAGER_AUTHORIZATION:/);
   assert.match(server, /authorization = \$operation\.Authorization/);
   assert.match(server, /AddParameter\('NoBrowser', \$true\)/);
-  assert.match(server, /AddParameter\('AuthorizationEvents', \$authorizationEvents\)/);
+  assert.match(server, /AddParameter\('AuthorizationEventKey', \$authorizationEventKey\)/);
   assert.match(server, /AuthorizationEvents\.TryDequeue/);
+  assert.match(server, /Provider authorization did not become ready within 30 seconds/);
 });
 
 test('configuration mutations preserve plan/apply behavior', () => {
@@ -64,5 +68,9 @@ test('web app exposes provider, mirror, operation, and activity surfaces', () =>
   assert.match(managerApp, /navigator\.clipboard\.writeText\(code\)/);
   assert.match(managerApp, /state\.authPopup\.location\.replace\(uri\)/);
   assert.match(managerApp, /closeAuthenticationPopup\(\)/);
+  assert.match(managerApp, /navigator\.locks\?\.request/);
+  assert.match(managerApp, /setInterval\(checkHost, 1000\)/);
+  assert.match(managerApp, /\/api\/operation\/cancel/);
+  assert.match(managerHtml, /id="cancel-operation"/);
   assert.match(managerDocs, /only authoritative non-secret registry/);
 });
