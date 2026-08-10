@@ -54,6 +54,41 @@ Wait-GitHubReferences `
     -ExpectMissing `
     -TimeoutSeconds 1
 
+$bitbucketModulePath = Join-Path $RepositoryRoot 'tools/Modules/Mirror.Bitbucket.psm1'
+$bitbucketTokens = $null
+$bitbucketParseErrors = $null
+$bitbucketAst = [Management.Automation.Language.Parser]::ParseFile(
+    $bitbucketModulePath,
+    [ref]$bitbucketTokens,
+    [ref]$bitbucketParseErrors
+)
+if (@($bitbucketParseErrors).Count -gt 0) {
+    throw 'Mirror.Bitbucket.psm1 could not be parsed for runtime tests.'
+}
+$latestCommitAst = $bitbucketAst.Find({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-BitbucketLatestCommit'
+}, $true)
+if ($null -eq $latestCommitAst) {
+    throw 'Get-BitbucketLatestCommit was not found in Mirror.Bitbucket.psm1.'
+}
+. ([scriptblock]::Create($latestCommitAst.Extent.Text))
+$script:bitbucketRequestPath = $null
+function Invoke-BitbucketApi {
+    param(
+        [string]$Method,
+        [string]$Path,
+        [object]$Credentials
+    )
+    $script:bitbucketRequestPath = $Path
+    return [pscustomobject]@{ values = @() }
+}
+[void](Get-BitbucketLatestCommit -Repository 'rsna_nl/example' -Revision 'main' -Credentials @{ Token = 'test' })
+if ($bitbucketRequestPath -ne 'repositories/rsna_nl/example/commits/main?pagelen=1') {
+    throw "Bitbucket latest-commit path is malformed: $bitbucketRequestPath"
+}
+
 Import-Module (Join-Path $RepositoryRoot 'tools/Modules/Mirror.Manager.psm1') -Force
 Import-Module (Join-Path $RepositoryRoot 'tools/Modules/Mirror.Common.psm1')
 foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-MirrorManagerSnapshot')) {
@@ -80,6 +115,33 @@ $unhealthyOverall = Resolve-MirrorOverallStatus -CheckedAt $checkedAt -Checks @(
 )
 if ($unhealthyOverall.state -ne 'unhealthy' -or $unhealthyOverall.reason -notmatch 'webhook') {
     throw 'Mirror status did not prioritize an unhealthy dependency in its overall state.'
+}
+
+$validationTime = [DateTimeOffset]::UtcNow.ToString('o')
+$validationSnapshot = [pscustomobject]@{
+    checked_at = $checkedAt
+    mirrors = @([pscustomobject]@{
+        id = 'test-mirror'
+        overall = $unknownOverall
+        bitbucket_repository = $healthyCheck
+        bitbucket_webhook = $healthyCheck
+        cloudflare_worker = $healthyCheck
+        github_repository = $healthyCheck
+        github_actions = New-MirrorStatusCheck -State 'unknown' -Reason 'No identifiable GitHub Actions mirror run was found.' -CheckedAt $checkedAt
+        last_successful_sync = [pscustomobject]@{ completed_at = $null; url = $null; run_number = $null }
+    })
+}
+$validationSnapshot = Merge-MirrorSyncValidationEvidence `
+    -Snapshot $validationSnapshot `
+    -Evidence @{ 'test-mirror' = [pscustomobject]@{ completed_at = $validationTime } }
+$validatedMirror = @($validationSnapshot.mirrors)[0]
+if (
+    $validatedMirror.last_successful_sync.completed_at -ne $validationTime -or
+    $validatedMirror.last_successful_sync.evidence -ne 'full_sync_validation' -or
+    $validatedMirror.github_actions.state -ne 'healthy' -or
+    $validatedMirror.overall.state -ne 'healthy'
+) {
+    throw 'Full synchronization validation evidence was not merged into mirror status.'
 }
 
 $authorizationEvents = [Collections.Concurrent.ConcurrentQueue[object]]::new()
@@ -172,6 +234,7 @@ foreach ($functionName in @(
 $script:operation = $null
 $script:statusSnapshot = $null
 $script:statusIsStale = $true
+$script:syncValidationEvidence = @{}
 Write-Host 'Testing the real Mirror Manager provider-operation boundary.'
 try {
     [void](Start-ManagerOperation -Action 'connect-provider' -Arguments @{ Provider = 'Cloudflare' })

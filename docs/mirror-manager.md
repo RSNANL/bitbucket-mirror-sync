@@ -54,7 +54,7 @@ Each mirror card shows:
 - the latest mirror workflow status, conclusion and link;
 - the latest successful mirror workflow completion time.
 
-The workflow `run-name` includes the authoritative `mirror_id`, so Actions runs can be associated with a mirror without inferring from repository names or logs. Runs created before this convention cannot be attributed and remain `unknown`; dispatching that mirror once creates the first identifiable run.
+The workflow `run-name` includes the authoritative `mirror_id`, so Actions runs can be associated with a mirror without inferring from repository names or logs. Runs created before this convention cannot be attributed. A successful full synchronization validation is also accepted as stronger, process-local evidence: it updates the last successful synchronization and satisfies an otherwise unidentifiable Actions status for the remainder of the current Manager session. Once the `run-name` convention is active on the configured dispatch ref, successful runs remain identifiable across Manager restarts.
 
 The snapshot is held only in the local host process. Provider or infrastructure mutations mark it stale; refresh it again after authentication, dispatch, repair, provisioning or deployment. Status collection reuses the same webhook and Worker-readiness rules as resource validation and does not create a second configuration registry.
 

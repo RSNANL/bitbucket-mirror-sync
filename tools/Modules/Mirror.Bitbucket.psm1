@@ -90,7 +90,7 @@ function Get-BitbucketLatestCommit {
     $encodedRevision = [Uri]::EscapeDataString($Revision)
     $response = Invoke-BitbucketApi `
         -Method GET `
-        -Path "repositories/$Repository/commits/$encodedRevision?pagelen=1" `
+        -Path "repositories/$Repository/commits/${encodedRevision}?pagelen=1" `
         -Credentials $Credentials
     return @($response.values) | Select-Object -First 1
 }

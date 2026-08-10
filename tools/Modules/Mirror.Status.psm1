@@ -70,6 +70,65 @@ function Resolve-MirrorOverallStatus {
     return New-MirrorStatusCheck -State 'healthy' -CheckedAt $CheckedAt -Reason 'All monitored mirror resources are healthy.'
 }
 
+function Merge-MirrorSyncValidationEvidence {
+    param(
+        [Parameter(Mandatory)][object]$Snapshot,
+        [AllowNull()][Collections.IDictionary]$Evidence
+    )
+
+    if ($null -eq $Evidence -or $Evidence.Count -eq 0) { return $Snapshot }
+
+    foreach ($mirror in @($Snapshot.mirrors)) {
+        $mirrorId = [string](Get-MirrorStatusValue -InputObject $mirror -Name 'id')
+        if (-not $Evidence.Contains($mirrorId)) { continue }
+
+        $validation = $Evidence[$mirrorId]
+        $validatedAt = [string](Get-MirrorStatusValue -InputObject $validation -Name 'completed_at')
+        if ([string]::IsNullOrWhiteSpace($validatedAt)) { continue }
+
+        $existingCompletedAt = [string](Get-MirrorStatusNestedValue `
+            -InputObject $mirror `
+            -Path @('last_successful_sync', 'completed_at'))
+        $validatedTime = [DateTimeOffset]::MinValue
+        $existingTime = [DateTimeOffset]::MinValue
+        [void][DateTimeOffset]::TryParse($validatedAt, [ref]$validatedTime)
+        [void][DateTimeOffset]::TryParse($existingCompletedAt, [ref]$existingTime)
+        if ($existingTime -ge $validatedTime) { continue }
+
+        $mirror.last_successful_sync = [pscustomobject]@{
+            completed_at = $validatedAt
+            url = $null
+            run_number = $null
+            evidence = 'full_sync_validation'
+        }
+
+        $actionsCheck = Get-MirrorStatusValue -InputObject $mirror -Name 'github_actions'
+        if (
+            [string](Get-MirrorStatusValue -InputObject $actionsCheck -Name 'state') -eq 'unknown' -and
+            [string](Get-MirrorStatusValue -InputObject $actionsCheck -Name 'reason') -eq 'No identifiable GitHub Actions mirror run was found.'
+        ) {
+            $mirror.github_actions = New-MirrorStatusCheck `
+                -State 'healthy' `
+                -Reason 'Full synchronization validation passed in this Manager session.' `
+                -CheckedAt ([string]$Snapshot.checked_at) `
+                -Details @{
+                    completed_at = $validatedAt
+                    evidence = 'full_sync_validation'
+                }
+        }
+
+        $mirror.overall = Resolve-MirrorOverallStatus -CheckedAt ([string]$Snapshot.checked_at) -Checks @(
+            [pscustomobject]@{ Label = 'Bitbucket repository'; Check = $mirror.bitbucket_repository }
+            [pscustomobject]@{ Label = 'Bitbucket webhook'; Check = $mirror.bitbucket_webhook }
+            [pscustomobject]@{ Label = 'Cloudflare Worker'; Check = $mirror.cloudflare_worker }
+            [pscustomobject]@{ Label = 'GitHub repository'; Check = $mirror.github_repository }
+            [pscustomobject]@{ Label = 'GitHub Actions'; Check = $mirror.github_actions }
+        )
+    }
+
+    return $Snapshot
+}
+
 function Get-MirrorStatusErrorReason {
     param(
         [Parameter(Mandatory)][string]$Provider,
@@ -281,4 +340,4 @@ function Get-MirrorStatusSnapshot {
     }
 }
 
-Export-ModuleMember -Function New-MirrorStatusCheck, Resolve-MirrorOverallStatus, Get-MirrorStatusSnapshot
+Export-ModuleMember -Function New-MirrorStatusCheck, Resolve-MirrorOverallStatus, Merge-MirrorSyncValidationEvidence, Get-MirrorStatusSnapshot
