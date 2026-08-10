@@ -44,6 +44,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/test-powershell-syntax.ps1
+          ./scripts/test-powershell-runtime.ps1
           Import-Module ./tools/Modules/Mirror.Session.psm1 -Force
           Test-MirrorAuthenticationConfiguration -RequireConfigured
 

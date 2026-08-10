@@ -11,9 +11,10 @@ bash -n scripts/*.sh
 scripts/test-mirror-local.sh
 if command -v pwsh >/dev/null 2>&1; then
   pwsh -NoProfile -File scripts/test-powershell-syntax.ps1
+  pwsh -NoProfile -File scripts/test-powershell-runtime.ps1
   pwsh -NoProfile -Command 'Import-Module ./tools/Modules/Mirror.Session.psm1 -Force; Test-MirrorAuthenticationConfiguration -RequireConfigured'
 else
-  echo 'pwsh not available; PowerShell syntax and authentication validation skipped locally.' >&2
+  echo 'pwsh not available; PowerShell validations skipped locally.' >&2
 fi
 (
   cd worker
