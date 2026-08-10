@@ -10,6 +10,8 @@ No management PAT, API token, OAuth refresh token or provider password is commit
 
 Only the management GitHub client ID, Cloudflare client and account IDs, and Bitbucket client ID are stored in `config/authentication.json`. Callback URIs and requested scopes are fixed implementation contracts.
 
+The management GitHub App has repository `Administration: write`, `Environments: write`, `Actions: write` and `Contents: read` permissions. Content access is read-only and is used to resolve temporary branch and tag SHAs during explicit synchronization validation; it is not used by the unattended mirror runtime.
+
 ## Credential isolation for mirror runtime
 
 Every mirror uses two unique Ed25519 keypairs:

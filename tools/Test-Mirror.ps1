@@ -34,10 +34,18 @@ function Get-GitHubReferenceSha {
         [Parameter(Mandatory)][string]$Reference
     )
 
-    $referenceState = Invoke-GitHubApi `
-        -Method GET `
-        -Endpoint "repos/$Repository/git/ref/$Reference" `
-        -AllowMissing
+    try {
+        $referenceState = Invoke-GitHubApi `
+            -Method GET `
+            -Endpoint "repos/$Repository/git/ref/$Reference" `
+            -AllowMissing
+    }
+    catch {
+        if ($_.Exception.Message -match '\bHTTP 403\b|Resource not accessible by integration') {
+            throw 'GitHub reference validation requires the management GitHub App repository permission `Contents: read`. Accept the updated installation permission and reconnect the management session.'
+        }
+        throw
+    }
     if ($null -eq $referenceState) { return $null }
     return [string]$referenceState.object.sha
 }
@@ -76,6 +84,7 @@ function Invoke-MirrorRefSynchronizationValidation {
     param(
         [Parameter(Mandatory)][object]$Mirror,
         [Parameter(Mandatory)][object]$BitbucketRepository,
+        [Parameter(Mandatory)][object]$GitHubRepository,
         [Parameter(Mandatory)][string]$RepositoryPath,
         [Parameter(Mandatory)][int]$TimeoutSeconds
     )
@@ -105,6 +114,18 @@ function Invoke-MirrorRefSynchronizationValidation {
     if ([string]::IsNullOrWhiteSpace($defaultBranch)) {
         throw "Bitbucket source has no default branch: $($Mirror.bitbucket_repository)"
     }
+
+    $targetDefaultBranch = [string]$GitHubRepository.default_branch
+    if ([string]::IsNullOrWhiteSpace($targetDefaultBranch)) {
+        throw "GitHub target has no default branch: $($Mirror.github_repository)"
+    }
+    $targetDefaultBranchSha = Get-GitHubReferenceSha `
+        -Repository $Mirror.github_repository `
+        -Reference "heads/$targetDefaultBranch"
+    if ([string]::IsNullOrWhiteSpace($targetDefaultBranchSha)) {
+        throw "GitHub target default branch reference is unavailable: $targetDefaultBranch"
+    }
+    Write-Host 'GitHub reference read access is available.'
 
     $userNameResult = Invoke-ExternalCommand -FilePath $git -ArgumentList @(
         '-C', $resolvedRepositoryPath, 'config', '--get', 'user.name'
@@ -296,6 +317,7 @@ try {
         Invoke-MirrorRefSynchronizationValidation `
             -Mirror $mirror `
             -BitbucketRepository $sourceRepository `
+            -GitHubRepository $targetRepository `
             -RepositoryPath $SourceRepositoryPath `
             -TimeoutSeconds $RefSynchronizationTimeoutSeconds
     }

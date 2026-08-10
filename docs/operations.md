@@ -34,7 +34,7 @@ After the configuration and Worker deployment are active, validate the complete 
   -SourceRepositoryPath 'D:\RSNA\Home Assistant\generic-vacuum-statemachine-blueprint'
 ```
 
-This mode verifies that the local checkout's `origin` resolves to the configured Bitbucket repository, derives the actual default branch from Bitbucket and works only in a temporary clone. It creates an empty commit on a unique temporary branch with a lightweight tag, pushes both source refs, verifies both GitHub refs at the exact commit SHA, removes both source refs and verifies that GitHub prunes them. The source checkout and its active branch remain unchanged. Failure handling attempts to remove any temporary Bitbucket refs and the temporary clone before reporting the original failure; success is reported only after the complete synchronization and cleanup sequence passes.
+This mode verifies that the local checkout's `origin` resolves to the configured Bitbucket repository, derives the actual default branch from Bitbucket and works only in a temporary clone. Before creating temporary refs, it confirms that the management GitHub App can read target refs with `Contents: read`. It then creates an empty commit on a unique temporary branch with a lightweight tag, pushes both source refs, verifies both GitHub refs at the exact commit SHA, removes both source refs and verifies that GitHub prunes them. The source checkout and its active branch remain unchanged. Failure handling attempts to remove any temporary Bitbucket refs and the temporary clone before reporting the original failure; success is reported only after the complete synchronization and cleanup sequence passes.
 
 ## Validate infrastructure changes
 

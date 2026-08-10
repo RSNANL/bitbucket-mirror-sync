@@ -32,8 +32,10 @@ The GitHub App must:
 
 - have Device Flow enabled;
 - keep expiring user access tokens enabled;
-- have repository `Administration: write`, `Environments: write` and `Actions: write` permissions;
+- have repository `Administration: write`, `Environments: write`, `Actions: write` and `Contents: read` permissions;
 - be installed on the `RSNANL` account with access to all repositories, so newly created mirror repositories are immediately within the app installation boundary.
+
+`Contents: read` is used only to resolve temporary branch and tag refs during synchronization validation. After this permission is added or changed, accept the updated installation permission and start a new management session so its user access token receives the effective scope.
 
 The app installation is a provider-side authorization boundary, not a stored operator credential. Only the GitHub App client ID is stored in `config/authentication.json`. Device Flow does not require a client secret. The returned refresh token is deliberately discarded. The access token is exposed to GitHub CLI only as the process-scoped `GH_TOKEN` variable.
 
