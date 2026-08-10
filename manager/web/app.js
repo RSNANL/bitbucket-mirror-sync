@@ -116,7 +116,7 @@ function renderAuthorization(authorization) {
   const label = authorization.provider[0].toUpperCase() + authorization.provider.slice(1);
   elements.authorizationTitle.textContent = `Complete ${label} authentication`;
   elements.authorizationMessage.textContent = authorization.user_code
-    ? 'Copy this code into GitHub. This popup closes as soon as authorization succeeds.'
+    ? 'Copy this code, then open GitHub authorization when you are ready.'
     : 'Complete the provider consent flow in the popup. It closes automatically after the callback.';
   elements.authorizationCode.textContent = authorization.user_code || '';
   elements.authorizationCodeWrap.classList.toggle('hidden', !authorization.user_code);
@@ -148,9 +148,11 @@ function renderProviders() {
     card.classList.toggle('authenticated', provider.authenticated);
     card.querySelector('.provider-icon').textContent = provider.id.slice(0, 2).toUpperCase();
     card.querySelector('h3').textContent = provider.id[0].toUpperCase() + provider.id.slice(1);
-    card.querySelector('p').textContent = provider.authenticated ? formatExpiry(provider.expires_at) : 'Authorization required';
+    card.querySelector('p').textContent = provider.expired
+      ? 'Session expired'
+      : provider.authenticated ? formatExpiry(provider.expires_at) : 'Authorization required';
     const button = card.querySelector('button');
-    button.textContent = provider.authenticated ? 'Connected' : 'Connect';
+    button.textContent = provider.authenticated ? 'Connected' : provider.expired ? 'Reconnect' : 'Connect';
     button.disabled = !state.hostOnline || provider.authenticated || state.operation?.status === 'running';
     button.addEventListener('click', () => connectProvider(provider.id));
     elements.providers.append(card);
@@ -259,7 +261,9 @@ function renderOperation(operation) {
   if (operation?.action === 'connect-provider') {
     if (operation.authorization?.authorization_uri !== state.authorization?.authorization_uri) {
       renderAuthorization(operation.authorization);
-      if (operation.authorization) navigateAuthenticationPopup(operation.authorization.authorization_uri);
+      if (operation.authorization && operation.authorization.provider !== 'github') {
+        navigateAuthenticationPopup(operation.authorization.authorization_uri);
+      }
     }
     if (['succeeded', 'failed', 'cancelled'].includes(operation.status)) {
       closeAuthenticationPopup();
@@ -340,7 +344,9 @@ async function runOperation(action, args = {}, isApply = false) {
       body: JSON.stringify({ action, arguments: args }),
     });
     renderOperation(operation);
-    if (action !== 'refresh-status') document.querySelector('#activity').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!['refresh-status', 'connect-provider'].includes(action)) {
+      document.querySelector('#activity').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     if (!state.poller) state.poller = setInterval(pollOperation, 800);
   } catch (error) {
     if (!isApply) state.pendingPlan = null;
@@ -423,14 +429,14 @@ function connectProvider(provider) {
     eyebrow: 'Management session',
     title: `Connect ${label}`,
     note: provider === 'github'
-      ? 'GitHub uses a device code. Copy the code shown in Activity into the provider page.'
+      ? 'GitHub uses a device code. Start authorization to reveal the code here, then copy it and open GitHub when ready.'
       : 'The provider authorization page opens in your browser and closes after a successful callback.',
     submit: 'Start authorization',
     fields,
     onSubmit: (values) => {
       closeAuthenticationPopup();
       renderAuthorization(null);
-      state.authPopup = openAuthenticationPopup();
+      if (provider !== 'github') state.authPopup = openAuthenticationPopup();
       runOperation('connect-provider', { Provider: label, ...values });
     },
   });
