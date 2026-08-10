@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Mirror Manager</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="#overview" aria-label="Mirror Manager home">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <span><strong>Mirror</strong><small>Manager</small></span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a class="nav-link active" href="#overview">Overview</a>
+          <a class="nav-link" href="#mirrors">Mirrors</a>
+          <a class="nav-link" href="#activity">Activity</a>
+        </nav>
+        <div class="sidebar-foot">
+          <span class="local-dot" aria-hidden="true"></span>
+          <span><strong>Local session</strong><small>127.0.0.1 only</small></span>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Infrastructure control plane</p>
+            <h1>Mirror overview</h1>
+          </div>
+          <div class="header-actions">
+            <button class="button ghost" id="deploy-worker" type="button">Deploy Worker</button>
+            <button class="button primary" id="new-mirror" type="button">New mirror</button>
+          </div>
+        </header>
+
+        <div id="notice" class="notice hidden" role="status"></div>
+
+        <section id="overview" aria-labelledby="session-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Management session</p>
+              <h2 id="session-title">Provider access</h2>
+            </div>
+            <button class="text-button" id="disconnect" type="button">Disconnect all</button>
+          </div>
+          <div class="provider-grid" id="providers" aria-live="polite"></div>
+        </section>
+
+        <section id="mirrors" aria-labelledby="mirrors-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Configured infrastructure</p>
+              <h2 id="mirrors-title">Mirrors</h2>
+            </div>
+            <span class="count" id="mirror-count">0 mirrors</span>
+          </div>
+          <div class="mirror-list" id="mirror-list" aria-live="polite"></div>
+        </section>
+
+        <section id="activity" aria-labelledby="activity-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Current operation</p>
+              <h2 id="activity-title">Activity</h2>
+            </div>
+            <div class="activity-actions">
+              <button class="button primary compact hidden" id="apply-plan" type="button">Apply reviewed plan</button>
+              <span class="operation-state idle" id="operation-state">Idle</span>
+            </div>
+          </div>
+          <div class="terminal" aria-live="polite">
+            <div class="terminal-bar"><span></span><span></span><span></span><strong id="operation-name">No operation running</strong></div>
+            <pre id="operation-log">Select an action to inspect or manage a mirror.</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="action-dialog">
+      <form method="dialog" id="action-form">
+        <div class="dialog-heading">
+          <div><p class="eyebrow" id="dialog-eyebrow">Mirror operation</p><h2 id="dialog-title">Action</h2></div>
+          <button class="icon-button" value="cancel" aria-label="Close dialog" type="submit">×</button>
+        </div>
+        <div id="dialog-fields" class="form-grid"></div>
+        <p class="dialog-note" id="dialog-note"></p>
+        <div class="dialog-actions">
+          <button class="button ghost" value="cancel" type="submit">Cancel</button>
+          <button class="button primary" id="dialog-submit" value="default" type="submit">Continue</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="provider-template">
+      <article class="provider-card">
+        <div class="provider-icon" aria-hidden="true"></div>
+        <div><h3></h3><p></p></div>
+        <button class="button compact" type="button"></button>
+      </article>
+    </template>
+
+    <template id="mirror-template">
+      <article class="mirror-card">
+        <div class="mirror-main">
+          <div class="mirror-status" aria-hidden="true"></div>
+          <div class="mirror-copy"><div class="mirror-title-row"><h3></h3><span class="pill"></span></div><p class="route"></p></div>
+        </div>
+        <div class="mirror-flags"></div>
+        <div class="mirror-actions">
+          <button class="button ghost compact validate" type="button">Validate</button>
+          <button class="button ghost compact dispatch" type="button">Dispatch</button>
+          <button class="button compact manage" type="button">Manage</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
