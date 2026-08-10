@@ -54,4 +54,12 @@ Wait-GitHubReferences `
     -ExpectMissing `
     -TimeoutSeconds 1
 
+Import-Module (Join-Path $RepositoryRoot 'tools/Modules/Mirror.Manager.psm1') -Force
+Import-Module (Join-Path $RepositoryRoot 'tools/Modules/Mirror.Common.psm1')
+foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-MirrorManagerSnapshot')) {
+    if ($null -eq (Get-Command $commandName -ErrorAction SilentlyContinue)) {
+        throw "Mirror Manager startup command is unavailable after module initialization: $commandName"
+    }
+}
+
 Write-Host 'PowerShell mirror reference wait modes are valid.'

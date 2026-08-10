@@ -6,8 +6,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Common.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Manager.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Common.psm1')
 
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     throw "PowerShell 7 or newer is required; current version is $($PSVersionTable.PSVersion)."
