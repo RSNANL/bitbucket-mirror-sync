@@ -263,9 +263,9 @@ function Receive-LoopbackOAuthCode {
         }
 
         $html = if ($errorMessage) {
-            '<!doctype html><html><body><h2>Authorization failed</h2><p>You can return to PowerShell.</p></body></html>'
+            '<!doctype html><html><body><h2>Authorization failed</h2><p>This window can be closed.</p></body></html>'
         } else {
-            '<!doctype html><html><body><h2>Authorization complete</h2><p>You can return to PowerShell.</p></body></html>'
+            '<!doctype html><html><body><h2>Authorization complete</h2><p>This window closes automatically.</p><script>window.close()</script></body></html>'
         }
         $body = [Text.Encoding]::UTF8.GetBytes($html)
         $headers = "HTTP/1.1 200 OK`r`nContent-Type: text/html; charset=utf-8`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n"
@@ -461,17 +461,22 @@ function Connect-CloudflareSession {
 }
 
 function Connect-BitbucketSession {
-    param([Parameter(Mandatory)][object]$Configuration)
+    param(
+        [Parameter(Mandatory)][object]$Configuration,
+        [AllowNull()][string]$ClientSecret
+    )
 
     if ([Environment]::GetEnvironmentVariable('BITBUCKET_API_TOKEN', 'Process')) {
         throw 'BITBUCKET_API_TOKEN is set in the current process. Remove it before starting an interactive mirror management session.'
     }
 
     $clientId = [string]$Configuration.bitbucket.client_id
-    $secureSecret = Read-Host -Prompt 'Bitbucket OAuth consumer secret (used only in this process)' -AsSecureString
-    $clientSecret = ConvertFrom-SecureStringPlainText -SecureString $secureSecret
-    $secureSecret = $null
-    if ([string]::IsNullOrWhiteSpace($clientSecret)) { throw 'Bitbucket OAuth consumer secret is required.' }
+    if ([string]::IsNullOrWhiteSpace($ClientSecret)) {
+        $secureSecret = Read-Host -Prompt 'Bitbucket OAuth consumer secret (used only in this process)' -AsSecureString
+        $ClientSecret = ConvertFrom-SecureStringPlainText -SecureString $secureSecret
+        $secureSecret = $null
+    }
+    if ([string]::IsNullOrWhiteSpace($ClientSecret)) { throw 'Bitbucket OAuth consumer secret is required.' }
 
     try {
         $state = New-RandomBase64Url
@@ -482,7 +487,7 @@ function Connect-BitbucketSession {
         }))
         $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
 
-        $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${clientId}:$clientSecret")
+        $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${clientId}:$ClientSecret")
         $basic = [Convert]::ToBase64String($credentialBytes)
         $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://bitbucket.org/site/oauth2/access_token' -Headers @{ Authorization = "Basic $basic"; Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
             grant_type = 'authorization_code'
@@ -501,7 +506,7 @@ function Connect-BitbucketSession {
         Write-Host 'Bitbucket authenticated for this process.'
     }
     finally {
-        $clientSecret = $null
+        $ClientSecret = $null
     }
 }
 

@@ -7,6 +7,8 @@ function Get-MirrorManagerOperationDefinition {
     param([Parameter(Mandatory)][string]$Action)
 
     $definitions = @{
+        'connect-provider' = @{ Script = 'Connect-MirrorProvider.ps1'; Required = @('Provider'); Switches = @(); Optional = @('BitbucketClientSecret') }
+        'disconnect-session' = @{ Script = 'Disconnect-MirrorSession.ps1'; Required = @(); Switches = @(); Optional = @() }
         'validate' = @{ Script = 'Test-Mirror.ps1'; Required = @('MirrorId'); Switches = @(); Optional = @() }
         'dispatch' = @{ Script = 'Test-Mirror.ps1'; Required = @('MirrorId'); Switches = @('Dispatch'); Optional = @() }
         'validate-sync' = @{ Script = 'Test-Mirror.ps1'; Required = @('MirrorId', 'SourceRepositoryPath'); Switches = @('ValidateSync'); Optional = @('SyncTimeoutSeconds') }
@@ -19,6 +21,14 @@ function Get-MirrorManagerOperationDefinition {
     }
     if (-not $definitions.ContainsKey($Action)) { throw "Unsupported Mirror Manager action: $Action" }
     return $definitions[$Action]
+}
+
+function Test-MirrorManagerMutatingAction {
+    param([Parameter(Mandatory)][string]$Action)
+    return $Action -in @(
+        'connect-provider', 'disconnect-session', 'new-mirror', 'remove-mirror',
+        'repair-mirror', 'rotate-keys', 'deploy-worker', 'set-mirror'
+    )
 }
 
 function ConvertTo-MirrorManagerParameters {
@@ -90,4 +100,4 @@ function Get-MirrorManagerSnapshot {
     }
 }
 
-Export-ModuleMember -Function Get-MirrorManagerOperationDefinition, ConvertTo-MirrorManagerParameters, Get-MirrorManagerInvocation, Get-MirrorManagerSnapshot
+Export-ModuleMember -Function Get-MirrorManagerOperationDefinition, Test-MirrorManagerMutatingAction, ConvertTo-MirrorManagerParameters, Get-MirrorManagerInvocation, Get-MirrorManagerSnapshot
