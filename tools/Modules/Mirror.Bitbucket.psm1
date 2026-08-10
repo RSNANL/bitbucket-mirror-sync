@@ -80,6 +80,21 @@ function Get-BitbucketRepository {
     return Invoke-BitbucketApi -Method GET -Path "repositories/$Repository" -Credentials $Credentials -AllowMissing:$AllowMissing
 }
 
+function Get-BitbucketLatestCommit {
+    param(
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$Revision,
+        [Parameter(Mandatory)][object]$Credentials
+    )
+
+    $encodedRevision = [Uri]::EscapeDataString($Revision)
+    $response = Invoke-BitbucketApi `
+        -Method GET `
+        -Path "repositories/$Repository/commits/$encodedRevision?pagelen=1" `
+        -Credentials $Credentials
+    return @($response.values) | Select-Object -First 1
+}
+
 function Get-BitbucketDeployKeys {
     param(
         [Parameter(Mandatory)][string]$Repository,
@@ -118,6 +133,23 @@ function Get-BitbucketWebhooks {
     return Get-BitbucketPagedValues -Path "repositories/$Repository/hooks" -Credentials $Credentials
 }
 
+function Get-BitbucketMirrorWebhooks {
+    param(
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string]$MirrorId,
+        [Parameter(Mandatory)][string]$ExpectedUrl,
+        [Parameter(Mandatory)][object]$Credentials
+    )
+
+    $description = "mirror:$MirrorId"
+    return @(Get-BitbucketWebhooks -Repository $Repository -Credentials $Credentials | Where-Object {
+        $_.description -eq $description -and
+        $_.active -and
+        $_.url -eq $ExpectedUrl -and
+        'repo:push' -in @($_.events)
+    })
+}
+
 function New-BitbucketWebhook {
     param(
         [Parameter(Mandatory)][string]$Repository,
@@ -145,4 +177,4 @@ function Remove-BitbucketWebhook {
     [void](Invoke-BitbucketApi -Method DELETE -Path "repositories/$Repository/hooks/$encoded" -Credentials $Credentials)
 }
 
-Export-ModuleMember -Function Get-BitbucketCredentials, Invoke-BitbucketApi, Get-BitbucketRepository, Get-BitbucketDeployKeys, New-BitbucketDeployKey, Remove-BitbucketDeployKey, Get-BitbucketWebhooks, New-BitbucketWebhook, Remove-BitbucketWebhook
+Export-ModuleMember -Function Get-BitbucketCredentials, Invoke-BitbucketApi, Get-BitbucketRepository, Get-BitbucketLatestCommit, Get-BitbucketDeployKeys, New-BitbucketDeployKey, Remove-BitbucketDeployKey, Get-BitbucketWebhooks, Get-BitbucketMirrorWebhooks, New-BitbucketWebhook, Remove-BitbucketWebhook

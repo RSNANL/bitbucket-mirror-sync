@@ -24,6 +24,8 @@ $csrfToken = New-RandomSecret -ByteLength 32
 $runtimeId = [Guid]::NewGuid().ToString('N')
 $operation = $null
 $lastClientHeartbeat = $null
+$statusSnapshot = $null
+$statusIsStale = $true
 
 function Send-ManagerResponse {
     param(
@@ -162,13 +164,27 @@ function Get-ManagerOperationState {
 
     if ($operation.Status -eq 'running' -and $operation.Async.IsCompleted) {
         try {
-            $result = @($operation.PowerShell.EndInvoke($operation.Async) | ForEach-Object { [string]$_ })
+            $result = @($operation.PowerShell.EndInvoke($operation.Async))
             Receive-ManagerOperationStreams -ManagerOperation $operation
-            $operation.Output = @($operation.Output) + $result
             if ($operation.PowerShell.HadErrors -or $operation.Errors.Count -gt 0) {
                 $operation.Status = 'failed'
                 $operation.Error = $operation.Errors -join "`n"
             } else {
+                if ($operation.Action -eq 'refresh-status') {
+                    if ($result.Count -ne 1) { throw 'Mirror status refresh did not return exactly one status snapshot.' }
+                    $script:statusSnapshot = $result[0]
+                    $script:statusIsStale = $false
+                    $operation.Output = @($operation.Output) + 'Live mirror status refreshed.'
+                } else {
+                    $operation.Output = @($operation.Output) + @($result | ForEach-Object { [string]$_ })
+                    if ($operation.Action -in @(
+                        'connect-provider', 'disconnect-session', 'dispatch', 'validate-sync',
+                        'new-mirror', 'remove-mirror', 'repair-mirror', 'rotate-keys',
+                        'deploy-worker', 'set-mirror'
+                    )) {
+                        $script:statusIsStale = $true
+                    }
+                }
                 $operation.Status = 'succeeded'
             }
         }
@@ -301,7 +317,7 @@ try {
                 Send-ManagerJson -Context $context -StatusCode 200 -Value @{ request_token = $csrfToken; runtime_id = $runtimeId }
             }
             elseif ($request.HttpMethod -eq 'GET' -and $path -eq '/api/snapshot') {
-                Send-ManagerJson -Context $context -StatusCode 200 -Value (Get-MirrorManagerSnapshot)
+                Send-ManagerJson -Context $context -StatusCode 200 -Value (Get-MirrorManagerSnapshot -StatusSnapshot $statusSnapshot -StatusIsStale $statusIsStale)
             }
             elseif ($request.HttpMethod -eq 'GET' -and $path -eq '/api/operation') {
                 Send-ManagerJson -Context $context -StatusCode 200 -Value (Get-ManagerOperationState)

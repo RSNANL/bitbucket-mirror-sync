@@ -62,6 +62,26 @@ foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-Mirror
     }
 }
 
+Import-Module (Join-Path $RepositoryRoot 'tools/Modules/Mirror.Status.psm1') -Force
+$checkedAt = [DateTimeOffset]::UtcNow.ToString('o')
+$healthyCheck = New-MirrorStatusCheck -State 'healthy' -Reason 'Ready.' -CheckedAt $checkedAt
+$unknownCheck = New-MirrorStatusCheck -State 'unknown' -Reason 'Not connected.' -CheckedAt $checkedAt
+$unhealthyCheck = New-MirrorStatusCheck -State 'unhealthy' -Reason 'Missing.' -CheckedAt $checkedAt
+$unknownOverall = Resolve-MirrorOverallStatus -CheckedAt $checkedAt -Checks @(
+    [pscustomobject]@{ Label = 'source'; Check = $healthyCheck }
+    [pscustomobject]@{ Label = 'actions'; Check = $unknownCheck }
+)
+if ($unknownOverall.state -ne 'unknown' -or $unknownOverall.reason -notmatch 'actions') {
+    throw 'Mirror status did not preserve an unknown dependency in its overall state.'
+}
+$unhealthyOverall = Resolve-MirrorOverallStatus -CheckedAt $checkedAt -Checks @(
+    [pscustomobject]@{ Label = 'source'; Check = $unknownCheck }
+    [pscustomobject]@{ Label = 'webhook'; Check = $unhealthyCheck }
+)
+if ($unhealthyOverall.state -ne 'unhealthy' -or $unhealthyOverall.reason -notmatch 'webhook') {
+    throw 'Mirror status did not prioritize an unhealthy dependency in its overall state.'
+}
+
 $authorizationEvents = [Collections.Concurrent.ConcurrentQueue[object]]::new()
 $authorizationEventKey = "MirrorManager.Authorization.Test.$([Guid]::NewGuid().ToString('N'))"
 [AppDomain]::CurrentDomain.SetData($authorizationEventKey, $authorizationEvents)
@@ -150,6 +170,8 @@ foreach ($functionName in @(
 }
 
 $script:operation = $null
+$script:statusSnapshot = $null
+$script:statusIsStale = $true
 Write-Host 'Testing the real Mirror Manager provider-operation boundary.'
 try {
     [void](Start-ManagerOperation -Action 'connect-provider' -Arguments @{ Provider = 'Cloudflare' })
@@ -178,6 +200,24 @@ if ($operation.Status -ne 'cancelled' -or $null -eq $operation.CompletedAt -or $
 }
 if ($null -ne [AppDomain]::CurrentDomain.GetData($cancellationEventKey)) {
     throw 'Mirror Manager retained an authorization event channel after cancellation.'
+}
+
+Write-Host 'Testing the real Mirror Manager status-operation boundary.'
+[void](Start-ManagerOperation -Action 'refresh-status' -Arguments @{})
+$statusDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+do {
+    Start-Sleep -Milliseconds 100
+    $statusOperation = Get-ManagerOperationState
+} while ($statusOperation.status -eq 'running' -and [DateTimeOffset]::UtcNow -lt $statusDeadline)
+if ($statusOperation.status -ne 'succeeded') {
+    throw "The real status operation did not succeed: $($statusOperation.error)"
+}
+if ($null -eq $statusSnapshot -or @($statusSnapshot.mirrors).Count -eq 0 -or $statusIsStale) {
+    throw 'The live status snapshot did not cross the Mirror Manager runspace boundary.'
+}
+$managerSnapshot = Get-MirrorManagerSnapshot -StatusSnapshot $statusSnapshot -StatusIsStale $statusIsStale
+if ($managerSnapshot.status.is_stale -or $managerSnapshot.status.checked_at -ne $statusSnapshot.checked_at) {
+    throw 'Mirror Manager did not expose the completed live status snapshot.'
 }
 
 foreach ($addressText in @('127.0.0.1', '::1', '::ffff:127.0.0.1')) {

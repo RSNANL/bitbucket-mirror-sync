@@ -267,7 +267,6 @@ if (
 $environmentName = Get-DerivedEnvironmentName -MirrorId $MirrorId
 $sourceLabelPrefix = "mirror:$MirrorId:source:"
 $targetTitlePrefix = "mirror:$MirrorId:target:"
-$webhookDescription = "mirror:$MirrorId"
 $webhookUrl = "$(Resolve-WorkerBaseUrl -WorkerBaseUrl $config.worker.base_url)$($config.worker.path_prefix)/$MirrorId"
 
 [void](Test-GitHubAuthentication)
@@ -293,12 +292,11 @@ try {
     $targetKeys = @(Get-GitHubDeployKeys -Repository $mirror.github_repository | Where-Object { $_.title -like "$targetTitlePrefix*" -and $_.read_only -eq $false })
     if ($targetKeys.Count -eq 0) { throw 'No managed write-enabled GitHub deploy key was found.' }
 
-    $webhooks = @(Get-BitbucketWebhooks -Repository $mirror.bitbucket_repository -Credentials $bitbucketCredentials | Where-Object {
-        $_.description -eq $webhookDescription -and
-        $_.active -and
-        $_.url -eq $webhookUrl -and
-        'repo:push' -in @($_.events)
-    })
+    $webhooks = @(Get-BitbucketMirrorWebhooks `
+        -Repository $mirror.bitbucket_repository `
+        -MirrorId $MirrorId `
+        -ExpectedUrl $webhookUrl `
+        -Credentials $bitbucketCredentials)
     if ($webhooks.Count -eq 0) { throw 'No active managed Bitbucket push webhook with the expected URL was found.' }
 
     $environmentSecrets = @(Get-GitHubEnvironmentSecrets -InfrastructureRepository $config.dispatch.github_repository -EnvironmentName $environmentName)
