@@ -51,11 +51,16 @@ function Get-GitHubReferenceSha {
 }
 
 function Wait-GitHubReferences {
+    [CmdletBinding(DefaultParameterSetName = 'Present')]
     param(
         [Parameter(Mandatory)][string]$Repository,
         [Parameter(Mandatory)][string]$BranchName,
         [Parameter(Mandatory)][string]$TagName,
-        [AllowNull()][string]$ExpectedSha,
+        [Parameter(Mandatory, ParameterSetName = 'Present')]
+        [ValidatePattern('^[0-9a-fA-F]{40}$')]
+        [string]$ExpectedSha,
+        [Parameter(Mandatory, ParameterSetName = 'Missing')]
+        [switch]$ExpectMissing,
         [Parameter(Mandatory)][int]$TimeoutSeconds
     )
 
@@ -65,7 +70,7 @@ function Wait-GitHubReferences {
     do {
         $branchSha = Get-GitHubReferenceSha -Repository $Repository -Reference $branchReference
         $tagSha = Get-GitHubReferenceSha -Repository $Repository -Reference $tagReference
-        if ($null -eq $ExpectedSha) {
+        if ($ExpectMissing) {
             if ($null -eq $branchSha -and $null -eq $tagSha) { return }
         }
         elseif ($branchSha -eq $ExpectedSha -and $tagSha -eq $ExpectedSha) {
@@ -74,7 +79,7 @@ function Wait-GitHubReferences {
         Start-Sleep -Seconds 10
     } while ([DateTimeOffset]::UtcNow -lt $deadline)
 
-    if ($null -eq $ExpectedSha) {
+    if ($ExpectMissing) {
         throw "GitHub did not prune both validation refs within $TimeoutSeconds seconds. Branch SHA: '$branchSha'; tag SHA: '$tagSha'."
     }
     throw "GitHub did not mirror both validation refs at SHA $ExpectedSha within $TimeoutSeconds seconds. Branch SHA: '$branchSha'; tag SHA: '$tagSha'."
@@ -203,7 +208,7 @@ function Invoke-MirrorRefSynchronizationValidation {
             -Repository $Mirror.github_repository `
             -BranchName $testBranch `
             -TagName $testTag `
-            -ExpectedSha $null `
+            -ExpectMissing `
             -TimeoutSeconds $TimeoutSeconds
         Write-Host 'GitHub pruned the temporary branch and tag.'
     }
