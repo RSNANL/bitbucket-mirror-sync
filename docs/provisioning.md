@@ -106,14 +106,13 @@ This verifies the source and private target repositories, managed deploy keys, e
 
 Then activate the reviewed configuration in this order:
 
-1. review and commit only the generated non-secret configuration on the feature branch;
-2. open a pull request to `main` and let `validate.yml` complete automatically;
-3. merge the reviewed change to `main`;
-4. update the local `main` checkout;
-5. redeploy the Worker from that exact `main` tree without the deleted local GitHub App private-key file;
-6. submit and verify a manual generic workflow dispatch;
-7. run the mirror sync validation from a local checkout of the configured Bitbucket source;
-8. verify that the temporary branch and tag were mirrored at the exact commit SHA and pruned automatically.
+1. review only the generated non-secret configuration;
+2. commit the isolated, pre-validated registry change directly to `main` as an authorized maintainer, or use a pull request when direct operational updates are unavailable;
+3. update the local `main` checkout;
+4. redeploy the Worker from that exact `main` tree without the deleted local GitHub App private-key file;
+5. submit and verify a manual generic workflow dispatch;
+6. run the mirror sync validation from a local checkout of the configured Bitbucket source;
+7. verify that the temporary branch and tag were mirrored at the exact commit SHA and pruned automatically.
 
 The generic workflow must be present on the repository default branch before webhook or manual dispatch can succeed. Worker deployment is a management operation and therefore uses the current interactive Cloudflare management session; no Cloudflare deployment token is stored in GitHub Actions.
 
@@ -136,7 +135,7 @@ The supplied path identifies an existing checkout whose `origin` must resolve to
 
 Only after the manual dispatch and mirror sync validation succeed should `scheduled_recovery` be changed to `true`. This isolated, pre-validated operational configuration change may be committed directly to `main` by an authorized maintainer. Changes to code, workflows, schemas, interfaces, security boundaries or functional behavior continue to require a pull request. Redeploy the Worker afterward so the deployed snapshot remains aligned with `main`.
 
-The existing `mirror-doser.yml` workflow remains active and scheduled independently during this migration. Do not enable a generic schedule for the doser until its dedicated workflow has been explicitly retired.
+During adoption of an existing target, keep its legacy trigger active and leave `scheduled_recovery` disabled until the generic dispatch and `-ValidateSync` have passed. Then retire the legacy workflow and enable generic scheduled recovery in the same reviewed change, preventing both duplicate schedules and a gap in recovery coverage. Remove the replaced provider-side secrets, deploy keys and webhook only after that change is merged.
 
 ## End the management session
 
