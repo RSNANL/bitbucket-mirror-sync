@@ -62,6 +62,49 @@ foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-Mirror
     }
 }
 
+$authorizationEvents = [Collections.Concurrent.ConcurrentQueue[object]]::new()
+$authorizationPowerShell = [PowerShell]::Create()
+try {
+    [void]$authorizationPowerShell.AddScript(@'
+param(
+    [string]$SessionModulePath,
+    [Collections.Concurrent.ConcurrentQueue[object]]$Events
+)
+Import-Module $SessionModulePath -Force
+$sessionModule = Get-Module 'Mirror.Session'
+& $sessionModule {
+    param([Collections.Concurrent.ConcurrentQueue[object]]$Queue)
+    Write-ManagerAuthorization `
+        -Provider 'GitHub' `
+        -AuthorizationUri 'https://github.com/login/device' `
+        -UserCode 'TEST-CODE' `
+        -AuthorizationEvents $Queue
+} $Events
+'@)
+    [void]$authorizationPowerShell.AddArgument((Join-Path $RepositoryRoot 'tools/Modules/Mirror.Session.psm1'))
+    [void]$authorizationPowerShell.AddArgument($authorizationEvents)
+    $authorizationAsync = $authorizationPowerShell.BeginInvoke()
+    if (-not $authorizationAsync.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds(5))) {
+        throw 'The authorization event producer did not complete.'
+    }
+    [void]$authorizationPowerShell.EndInvoke($authorizationAsync)
+}
+finally {
+    $authorizationPowerShell.Dispose()
+}
+
+$authorizationEvent = $null
+if (-not $authorizationEvents.TryDequeue([ref]$authorizationEvent)) {
+    throw 'An authorization event could not cross the Mirror Manager runspace boundary.'
+}
+if (
+    $authorizationEvent.provider -ne 'github' -or
+    $authorizationEvent.authorization_uri -ne 'https://github.com/login/device' -or
+    $authorizationEvent.user_code -ne 'TEST-CODE'
+) {
+    throw 'The authorization event changed while crossing the Mirror Manager runspace boundary.'
+}
+
 $managerServerPath = Join-Path $RepositoryRoot 'tools/Start-MirrorManager.ps1'
 $managerServerTokens = $null
 $managerServerParseErrors = $null

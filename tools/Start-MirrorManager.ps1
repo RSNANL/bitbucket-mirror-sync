@@ -96,22 +96,12 @@ function Get-ManagerOperationState {
         }
     }
 
-    $information = @($operation.PowerShell.Streams.Information | ForEach-Object { [string]$_.MessageData })
-    $visibleInformation = @()
-    foreach ($line in $information) {
-        if ($line.StartsWith('MIRROR_MANAGER_AUTHORIZATION:')) {
-            try {
-                $operation.Authorization = $line.Substring('MIRROR_MANAGER_AUTHORIZATION:'.Length) | ConvertFrom-Json
-            }
-            catch {
-                $operation.Status = 'failed'
-                $operation.Error = 'The provider authorization response could not be read by Mirror Manager.'
-            }
-        }
-        else {
-            $visibleInformation += $line
-        }
+    $authorizationEvent = $null
+    while ($operation.AuthorizationEvents.TryDequeue([ref]$authorizationEvent)) {
+        $operation.Authorization = $authorizationEvent
+        $authorizationEvent = $null
     }
+    $visibleInformation = @($operation.PowerShell.Streams.Information | ForEach-Object { [string]$_.MessageData })
     $warnings = @($operation.PowerShell.Streams.Warning | ForEach-Object { [string]$_ })
     $errors = @($operation.PowerShell.Streams.Error | ForEach-Object { [string]$_ })
 
@@ -160,12 +150,14 @@ function Start-ManagerOperation {
 
     $invocation = Get-MirrorManagerInvocation -Action $Action -Arguments $Arguments
     $powerShell = [PowerShell]::Create()
+    $authorizationEvents = [Collections.Concurrent.ConcurrentQueue[object]]::new()
     [void]$powerShell.AddCommand($invocation.ScriptPath)
     foreach ($entry in $invocation.Parameters.GetEnumerator()) {
         [void]$powerShell.AddParameter([string]$entry.Key, $entry.Value)
     }
     if ($Action -eq 'connect-provider') {
         [void]$powerShell.AddParameter('NoBrowser', $true)
+        [void]$powerShell.AddParameter('AuthorizationEvents', $authorizationEvents)
     }
     if ($Action -in @('new-mirror', 'remove-mirror', 'repair-mirror', 'rotate-keys', 'deploy-worker', 'set-mirror')) {
         [void]$powerShell.AddParameter('Confirm', $false)
@@ -183,6 +175,7 @@ function Start-ManagerOperation {
         Output = @()
         Error = $null
         Authorization = $null
+        AuthorizationEvents = $authorizationEvents
     }
     return Get-ManagerOperationState
 }

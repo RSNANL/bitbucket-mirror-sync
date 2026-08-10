@@ -200,15 +200,15 @@ function Write-ManagerAuthorization {
     param(
         [Parameter(Mandatory)][string]$Provider,
         [Parameter(Mandatory)][string]$AuthorizationUri,
-        [AllowNull()][string]$UserCode
+        [AllowNull()][string]$UserCode,
+        [Parameter(Mandatory)][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
     )
 
-    $payload = [ordered]@{
+    $AuthorizationEvents.Enqueue([pscustomobject][ordered]@{
         provider = $Provider.ToLowerInvariant()
         authorization_uri = $AuthorizationUri
         user_code = if ([string]::IsNullOrWhiteSpace($UserCode)) { $null } else { $UserCode }
-    } | ConvertTo-Json -Compress
-    Write-Host "MIRROR_MANAGER_AUTHORIZATION:$payload"
+    })
 }
 
 function Open-ProviderAuthorization {
@@ -359,7 +359,8 @@ function Test-MirrorSession {
 function Connect-GitHubSession {
     param(
         [Parameter(Mandatory)][object]$Configuration,
-        [switch]$NoBrowser
+        [switch]$NoBrowser,
+        [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
     )
 
     if (Test-PersistentGitHubCredential) {
@@ -384,7 +385,8 @@ function Connect-GitHubSession {
     Write-Host "GitHub device code: $userCode"
     Write-Host "Authorize at: $verificationUri"
     if ($NoBrowser) {
-        Write-ManagerAuthorization -Provider 'GitHub' -AuthorizationUri $verificationUri -UserCode $userCode
+        if ($null -eq $AuthorizationEvents) { throw 'Mirror Manager authorization event queue is required in no-browser mode.' }
+        Write-ManagerAuthorization -Provider 'GitHub' -AuthorizationUri $verificationUri -UserCode $userCode -AuthorizationEvents $AuthorizationEvents
     }
     Open-ProviderAuthorization -Uri $verificationUri -NoBrowser:$NoBrowser
 
@@ -439,7 +441,8 @@ function Connect-GitHubSession {
 function Connect-CloudflareSession {
     param(
         [Parameter(Mandatory)][object]$Configuration,
-        [switch]$NoBrowser
+        [switch]$NoBrowser,
+        [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
     )
 
     if ([Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN', 'Process')) {
@@ -461,7 +464,8 @@ function Connect-CloudflareSession {
     }))
 
     if ($NoBrowser) {
-        Write-ManagerAuthorization -Provider 'Cloudflare' -AuthorizationUri $authorizationUri -UserCode $null
+        if ($null -eq $AuthorizationEvents) { throw 'Mirror Manager authorization event queue is required in no-browser mode.' }
+        Write-ManagerAuthorization -Provider 'Cloudflare' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEvents $AuthorizationEvents
     }
     $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
     $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://dash.cloudflare.com/oauth2/token' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
@@ -496,7 +500,8 @@ function Connect-BitbucketSession {
     param(
         [Parameter(Mandatory)][object]$Configuration,
         [AllowNull()][string]$ClientSecret,
-        [switch]$NoBrowser
+        [switch]$NoBrowser,
+        [AllowNull()][Collections.Concurrent.ConcurrentQueue[object]]$AuthorizationEvents
     )
 
     if ([Environment]::GetEnvironmentVariable('BITBUCKET_API_TOKEN', 'Process')) {
@@ -519,7 +524,8 @@ function Connect-BitbucketSession {
             state = $state
         }))
         if ($NoBrowser) {
-            Write-ManagerAuthorization -Provider 'Bitbucket' -AuthorizationUri $authorizationUri -UserCode $null
+            if ($null -eq $AuthorizationEvents) { throw 'Mirror Manager authorization event queue is required in no-browser mode.' }
+            Write-ManagerAuthorization -Provider 'Bitbucket' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEvents $AuthorizationEvents
         }
         $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
 

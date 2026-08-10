@@ -34,9 +34,13 @@ test('local host enforces the loopback, origin, token, and operation boundaries'
 test('loopback OAuth completion attempts to close its browser window', () => {
   assert.match(session, /window\.close\(\)/);
   assert.match(session, /\[AllowNull\(\)\]\[string\]\$ClientSecret/);
-  assert.match(session, /MIRROR_MANAGER_AUTHORIZATION:/);
+  assert.match(session, /ConcurrentQueue\[object\]\]\$AuthorizationEvents/);
+  assert.match(session, /\$AuthorizationEvents\.Enqueue/);
+  assert.doesNotMatch(session, /MIRROR_MANAGER_AUTHORIZATION:/);
   assert.match(server, /authorization = \$operation\.Authorization/);
   assert.match(server, /AddParameter\('NoBrowser', \$true\)/);
+  assert.match(server, /AddParameter\('AuthorizationEvents', \$authorizationEvents\)/);
+  assert.match(server, /AuthorizationEvents\.TryDequeue/);
 });
 
 test('configuration mutations preserve plan/apply behavior', () => {
