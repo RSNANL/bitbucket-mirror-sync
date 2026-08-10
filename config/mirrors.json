@@ -12,6 +12,13 @@
   },
   "mirrors": [
     {
+      "id": "aquarium-nutrient-doser",
+      "enabled": true,
+      "bitbucket_repository": "rsna_nl/aquarium-nutrient-doser",
+      "github_repository": "RSNANL/aquarium-nutrient-doser-mirror",
+      "scheduled_recovery": false
+    },
+    {
       "id": "generic-vacuum-statemachine-blueprint",
       "enabled": true,
       "bitbucket_repository": "rsna_nl/generic-vacuum-statemachine-blueprint",
