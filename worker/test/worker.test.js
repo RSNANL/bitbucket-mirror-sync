@@ -11,7 +11,7 @@ const config = {
     github_repository: "RSNANL/bitbucket-mirror-sync",
     workflow_file: "mirror.yml",
     ref: "main",
-    github_app_client_id: "Iv23liExampleClientId",
+    github_app_id: 1234567,
     github_app_installation_id: 12345678
   },
   mirrors: [
@@ -91,12 +91,11 @@ test("keeps the GitHub App authentication preflight hidden without its ephemeral
 });
 
 test("verifies the GitHub App authentication without dispatching a workflow", async () => {
-  let tokenRequests = 0;
+  let preflightRequests = 0;
   let dispatchRequests = 0;
   const worker = createWorker(config, {
-    getDispatchToken: async () => {
-      tokenRequests += 1;
-      return token;
+    preflightDispatchIdentity: async () => {
+      preflightRequests += 1;
     },
     fetchImpl: async () => {
       dispatchRequests += 1;
@@ -112,14 +111,14 @@ test("verifies the GitHub App authentication without dispatching a workflow", as
     GITHUB_APP_AUTH_PREFLIGHT_TOKEN: "ephemeral-token"
   });
   assert.equal(response.status, 204);
-  assert.equal(tokenRequests, 1);
+  assert.equal(preflightRequests, 1);
   assert.equal(dispatchRequests, 0);
 });
 
 test("returns safe authentication detail from the protected preflight", async () => {
   const worker = createWorker(config, {
-    getDispatchToken: async () => {
-      throw new GitHubAppAuthenticationError("GitHub App installation token request failed: HTTP 401.");
+    preflightDispatchIdentity: async () => {
+      throw new GitHubAppAuthenticationError("GitHub App JWT identity verification failed: HTTP 401.");
     }
   });
   const preflightRequest = new Request(
@@ -136,7 +135,7 @@ test("returns safe authentication detail from the protected preflight", async ()
     assert.equal(response.status, 502);
     assert.deepEqual(await response.json(), {
       error: "github_app_authentication_failed",
-      detail: "GitHub App installation token request failed: HTTP 401."
+      detail: "GitHub App JWT identity verification failed: HTTP 401."
     });
   } finally {
     console.error = originalError;

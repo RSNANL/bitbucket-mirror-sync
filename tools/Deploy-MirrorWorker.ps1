@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [string]$GitHubAppClientId,
+    [long]$GitHubAppId,
     [long]$GitHubAppInstallationId,
     [string]$GitHubAppPrivateKeyPath,
     [string]$ConfigPath = 'config/mirrors.json',
@@ -15,18 +15,19 @@ Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Cloudflare.psm1') -Force
 
 Assert-MirrorConfiguration -ConfigPath $ConfigPath
 $config = Get-MirrorConfiguration -ConfigPath $ConfigPath
-$configuredClientId = [string]$config.dispatch.github_app_client_id
+$configuredAppId = $config.dispatch.github_app_id
 $configuredInstallationId = $config.dispatch.github_app_installation_id
+$appIdProvided = $PSBoundParameters.ContainsKey('GitHubAppId')
 $installationIdProvided = $PSBoundParameters.ContainsKey('GitHubAppInstallationId')
-if ([bool]$GitHubAppClientId -ne $installationIdProvided) {
-    throw 'GitHubAppClientId and GitHubAppInstallationId must be supplied together.'
+if ($appIdProvided -ne $installationIdProvided) {
+    throw 'GitHubAppId and GitHubAppInstallationId must be supplied together.'
 }
-$effectiveClientId = if ($GitHubAppClientId) { $GitHubAppClientId } else { $configuredClientId }
+$effectiveAppId = if ($appIdProvided) { $GitHubAppId } else { $configuredAppId }
 $effectiveInstallationId = if ($installationIdProvided) { $GitHubAppInstallationId } else { $configuredInstallationId }
-if ([string]::IsNullOrWhiteSpace($effectiveClientId) -or $null -eq $effectiveInstallationId) {
-    throw 'GitHub App client and installation IDs are required for the first Worker deployment.'
+if ($null -eq $effectiveAppId -or $null -eq $effectiveInstallationId) {
+    throw 'GitHub App and installation IDs are required for the first Worker deployment.'
 }
-if ($effectiveClientId -notmatch '^[A-Za-z0-9_-]+$') { throw 'GitHubAppClientId is not valid.' }
+if ([long]$effectiveAppId -lt 1) { throw 'GitHubAppId must be a positive integer.' }
 if ([long]$effectiveInstallationId -lt 1) { throw 'GitHubAppInstallationId must be a positive integer.' }
 
 $privateKey = $null
@@ -45,7 +46,7 @@ $workerName = Get-CloudflareWorkerName
 Write-Host 'Worker deployment plan:'
 Write-Host "  Worker:                     $workerName"
 Write-Host "  GitHub dispatch repository: $($config.dispatch.github_repository)"
-Write-Host "  GitHub App client id:       $effectiveClientId"
+Write-Host "  GitHub App id:              $effectiveAppId"
 Write-Host "  GitHub App installation id: $effectiveInstallationId"
 Write-Host "  GitHub App private key:     $(if ($privateKey) { 'upload or rotate' } else { 'preserve existing binding' })"
 
@@ -62,10 +63,10 @@ if (-not $workerExists -and -not $privateKey) {
 }
 
 if (
-    $configuredClientId -ne $effectiveClientId -or
+    $configuredAppId -ne [long]$effectiveAppId -or
     $configuredInstallationId -ne [long]$effectiveInstallationId
 ) {
-    Set-GitHubDispatchIdentity -ClientId $effectiveClientId -InstallationId ([long]$effectiveInstallationId) -ConfigPath $ConfigPath
+    Set-GitHubDispatchIdentity -AppId ([long]$effectiveAppId) -InstallationId ([long]$effectiveInstallationId) -ConfigPath $ConfigPath
     $config = Get-MirrorConfiguration -ConfigPath $ConfigPath
 }
 
@@ -86,6 +87,10 @@ try {
     [void](Assert-CloudflareWorkerReady)
     $preflightToken = New-RandomSecret -ByteLength 32
     Set-CloudflareWorkerSecret -SecretName 'GITHUB_APP_AUTH_PREFLIGHT_TOKEN' -SecretValue $preflightToken
+    [void](Assert-CloudflareWorkerReady -RequiredSecretNames @(
+        'GITHUB_APP_PRIVATE_KEY',
+        'GITHUB_APP_AUTH_PREFLIGHT_TOKEN'
+    ))
     [void](Test-CloudflareWorkerGitHubAppAuthentication `
         -WorkerBaseUrl (Get-CloudflareWorkerBaseUrl) `
         -PreflightToken $preflightToken)

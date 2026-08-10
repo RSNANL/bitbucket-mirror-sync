@@ -10,9 +10,9 @@ A new PowerShell process must authenticate again. See `authentication.md`.
 
 ## Deploy the Worker
 
-`Deploy-MirrorWorker.ps1` is planning-only unless `-Apply` is supplied. It deploys the current Worker source and mirror configuration directly through the active Cloudflare OAuth session, preserves existing Worker secrets and enables the configured `workers.dev` route. After deployment it binds a random short-lived preflight secret, requests one repository-bounded GitHub App installation token through the deployed Worker and immediately discards both. Deployment fails when the machine identity cannot authenticate; no mirror workflow is dispatched by this check.
+`Deploy-MirrorWorker.ps1` is planning-only unless `-Apply` is supplied. It deploys the current Worker source and mirror configuration directly through the active Cloudflare OAuth session, preserves existing Worker secrets and enables the configured `workers.dev` route. After deployment it binds a random short-lived preflight secret and verifies the GitHub App JWT identity, exact installation, dispatch-repository access and installed `Actions: write` permission through separate provider checks. It then requests the same repository- and permission-bounded installation token used by normal dispatch, validates its effective scope and revokes it immediately. The preflight secret is always removed. Deployment fails at the exact unsuccessful authentication boundary; no mirror workflow is dispatched by this check.
 
-The first deployment also receives the dedicated dispatch GitHub App client ID, installation ID and downloaded private-key path. The IDs are written to non-secret configuration; the private key is written only to the encrypted `GITHUB_APP_PRIVATE_KEY` Worker binding. Later source/config deployments preserve that binding and do not require the private-key file.
+The first deployment also receives the dedicated dispatch GitHub App ID, installation ID and downloaded private-key path. The IDs are written to non-secret configuration; the private key is written only to the encrypted `GITHUB_APP_PRIVATE_KEY` Worker binding. Later source/config deployments preserve that binding and do not require the private-key file.
 
 ```powershell
 ./tools/Deploy-MirrorWorker.ps1 @parameters

@@ -36,12 +36,12 @@ Run the deployment once without `-Apply` and review the plan:
 
 ```powershell
 ./tools/Deploy-MirrorWorker.ps1 `
-  -GitHubAppClientId '<client-id>' `
+  -GitHubAppId <app-id> `
   -GitHubAppInstallationId <installation-id> `
   -GitHubAppPrivateKeyPath '<downloaded-private-key.pem>'
 ```
 
-Then apply the same parameters. The deployment uses the active Cloudflare OAuth session directly, stores the public GitHub App identifiers in `config/mirrors.json`, uploads the private key only as encrypted Worker secret `GITHUB_APP_PRIVATE_KEY`, and preserves all existing Worker secrets on later deployments. It then verifies the deployed machine identity by obtaining and discarding one repository-bounded installation token through a protected, temporary preflight binding. No workflow is dispatched. No Wrangler login or persistent Cloudflare deployment credential is used. After bootstrap, remove the downloaded private-key file once this authentication preflight has succeeded.
+Then apply the same parameters. The deployment uses the active Cloudflare OAuth session directly, stores the public GitHub App identifiers in `config/mirrors.json`, uploads the private key only as encrypted Worker secret `GITHUB_APP_PRIVATE_KEY`, and preserves all existing Worker secrets on later deployments. Through a protected, temporary preflight binding it separately verifies the GitHub App JWT identity, configured installation, dispatch-repository access and installed `Actions: write` permission. It then obtains the same repository- and permission-bounded installation token used by normal dispatch, validates its effective scope and immediately revokes it. No workflow is dispatched. No Wrangler login or persistent Cloudflare deployment credential is used. After bootstrap, remove the downloaded private-key file once this authentication preflight has succeeded.
 
 ## New mirror
 

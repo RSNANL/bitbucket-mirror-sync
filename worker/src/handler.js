@@ -2,7 +2,8 @@
 import { verifyBitbucketSignature } from "./crypto.js";
 import {
   describeGitHubAppAuthenticationError,
-  getGitHubInstallationToken
+  getGitHubInstallationToken,
+  preflightGitHubAppAuthentication
 } from "./github-app.js";
 
 const GITHUB_APP_AUTH_PREFLIGHT_PATH = "/_internal/github-app-authentication";
@@ -22,7 +23,7 @@ const GITHUB_APP_AUTH_PREFLIGHT_PATH = "/_internal/github-app-authentication";
  *     github_repository: string,
  *     workflow_file: string,
  *     ref: string,
- *     github_app_client_id: string | null,
+ *     github_app_id: number | null,
  *     github_app_installation_id: number | null
  *   },
  *   mirrors: Mirror[]
@@ -95,13 +96,16 @@ function jsonResponse(body, status) {
  * @param {MirrorConfig} config
  * @param {{
  *   fetchImpl?: typeof fetch,
- *   getDispatchToken?: typeof getGitHubInstallationToken
+ *   getDispatchToken?: typeof getGitHubInstallationToken,
+ *   preflightDispatchIdentity?: typeof preflightGitHubAppAuthentication
  * }} [options]
  */
 export function createWorker(config, options = {}) {
   const mirrorIndex = buildMirrorIndex(config);
   const fetchImpl = options.fetchImpl ?? fetch;
   const getDispatchToken = options.getDispatchToken ?? getGitHubInstallationToken;
+  const preflightDispatchIdentity = options.preflightDispatchIdentity ??
+    preflightGitHubAppAuthentication;
 
   return {
     /**
@@ -124,7 +128,7 @@ export function createWorker(config, options = {}) {
         }
 
         try {
-          await getDispatchToken(config, env, fetchImpl);
+          await preflightDispatchIdentity(config, env, fetchImpl);
         } catch (error) {
           const detail = describeGitHubAppAuthenticationError(error);
           console.error(`GitHub App authentication preflight failed: ${detail}`);
@@ -173,7 +177,7 @@ export function createWorker(config, options = {}) {
       }
 
       if (
-        !config.dispatch.github_app_client_id ||
+        !config.dispatch.github_app_id ||
         !config.dispatch.github_app_installation_id ||
         !env.GITHUB_APP_PRIVATE_KEY
       ) {

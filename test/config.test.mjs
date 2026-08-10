@@ -17,7 +17,7 @@ function baseConfig() {
       github_repository: "RSNANL/bitbucket-mirror-sync",
       workflow_file: "mirror.yml",
       ref: "main",
-      github_app_client_id: "Iv23liExampleClientId",
+      github_app_id: 1234567,
       github_app_installation_id: 12345678
     },
     mirrors: []
@@ -37,7 +37,7 @@ function mirror(id = "generic-vacuum-statemachine-blueprint") {
 test("accepts an empty inactive configuration before Worker bootstrap", () => {
   const config = baseConfig();
   config.worker.base_url = null;
-  config.dispatch.github_app_client_id = null;
+  config.dispatch.github_app_id = null;
   config.dispatch.github_app_installation_id = null;
   assert.deepEqual(validateConfig(config), []);
 });
@@ -101,12 +101,18 @@ test("rejects secret values in configuration", () => {
 
 test("requires complete non-secret GitHub App dispatch identifiers", () => {
   const config = baseConfig();
-  config.dispatch.github_app_client_id = null;
+  config.dispatch.github_app_id = null;
   config.dispatch.github_app_installation_id = null;
-  config.dispatch.github_app_client_id = "Iv23liExampleClientId";
-  assert.match(validateConfig(config).join("\n"), /client and installation IDs/);
+  config.dispatch.github_app_id = 1234567;
+  assert.match(validateConfig(config).join("\n"), /App and installation IDs/);
   config.dispatch.github_app_installation_id = 12345678;
   assert.deepEqual(validateConfig(config), []);
+});
+
+test("requires the GitHub App ID to be a positive integer", () => {
+  const config = baseConfig();
+  config.dispatch.github_app_id = "Iv23liExampleClientId";
+  assert.match(validateConfig(config).join("\n"), /github_app_id must be null or a positive integer/);
 });
 
 test("returns enriched derived mirror data", () => {
@@ -150,12 +156,12 @@ test("dispatch identity CLI stores only the public GitHub App identifiers", asyn
   const update = spawnSync(process.execPath, [
     "scripts/set-github-dispatch-identity.mjs",
     "--config", configPath,
-    "--client-id", "Iv23liExampleClientId",
+    "--app-id", "1234567",
     "--installation-id", "12345678"
   ], { cwd: path.resolve("."), encoding: "utf8" });
   assert.equal(update.status, 0, update.stderr);
   const updated = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  assert.equal(updated.dispatch.github_app_client_id, "Iv23liExampleClientId");
+  assert.equal(updated.dispatch.github_app_id, 1234567);
   assert.equal(updated.dispatch.github_app_installation_id, 12345678);
   assert.deepEqual(validateConfig(updated), []);
   fs.rmSync(directory, { recursive: true, force: true });

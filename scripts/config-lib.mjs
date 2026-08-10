@@ -8,7 +8,6 @@ const PATH_PREFIX_PATTERN = /^\/[a-z0-9/_-]*[a-z0-9_-]$/;
 const MAX_REPOSITORY_LENGTH = 200;
 const MAX_WORKER_BASE_URL_LENGTH = 2048;
 const MAX_DISPATCH_REF_LENGTH = 255;
-const MAX_GITHUB_APP_CLIENT_ID_LENGTH = 100;
 const FORBIDDEN_SECRET_KEYS = new Set([
   "secret",
   "webhook_secret",
@@ -128,7 +127,7 @@ export function validateConfig(config) {
         "github_repository",
         "workflow_file",
         "ref",
-        "github_app_client_id",
+        "github_app_id",
         "github_app_installation_id"
       ],
       "dispatch"
@@ -151,14 +150,13 @@ export function validateConfig(config) {
       fail("dispatch.ref must be a non-empty Git ref.");
     }
     if (
-      config.dispatch.github_app_client_id !== null &&
+      config.dispatch.github_app_id !== null &&
       (
-        typeof config.dispatch.github_app_client_id !== "string" ||
-        config.dispatch.github_app_client_id.length > MAX_GITHUB_APP_CLIENT_ID_LENGTH ||
-        !/^[A-Za-z0-9_-]+$/.test(config.dispatch.github_app_client_id)
+        !Number.isSafeInteger(config.dispatch.github_app_id) ||
+        config.dispatch.github_app_id < 1
       )
     ) {
-      fail("dispatch.github_app_client_id must be null or a GitHub App client ID.");
+      fail("dispatch.github_app_id must be null or a positive integer.");
     }
     if (
       config.dispatch.github_app_installation_id !== null &&
@@ -170,10 +168,10 @@ export function validateConfig(config) {
       fail("dispatch.github_app_installation_id must be null or a positive integer.");
     }
     if (
-      (config.dispatch.github_app_client_id === null) !==
+      (config.dispatch.github_app_id === null) !==
       (config.dispatch.github_app_installation_id === null)
     ) {
-      fail("GitHub App client and installation IDs must either both be configured or both be null.");
+      fail("GitHub App and installation IDs must either both be configured or both be null.");
     }
   } catch (error) {
     fail(error.message);
@@ -189,7 +187,7 @@ export function validateConfig(config) {
   if (
     config.mirrors.length > 0 &&
     (
-      config.dispatch.github_app_client_id === null ||
+      config.dispatch.github_app_id === null ||
       config.dispatch.github_app_installation_id === null
     )
   ) {

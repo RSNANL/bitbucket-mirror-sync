@@ -225,32 +225,48 @@ function Assert-CloudflareWorkerReady {
 function Test-CloudflareWorkerGitHubAppAuthentication {
     param(
         [Parameter(Mandatory)][string]$WorkerBaseUrl,
-        [Parameter(Mandatory)][string]$PreflightToken
+        [Parameter(Mandatory)][string]$PreflightToken,
+        [ValidateRange(1, 20)][int]$MaximumAttempts = 10,
+        [ValidateRange(0, 10000)][int]$RetryDelayMilliseconds = 2000
     )
 
     $uri = "$(Resolve-WorkerBaseUrl -WorkerBaseUrl $WorkerBaseUrl)/_internal/github-app-authentication"
     $client = [Net.Http.HttpClient]::new()
-    $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, $uri)
-    $response = $null
     try {
-        $request.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $PreflightToken)
-        $request.Headers.Accept.Add([Net.Http.Headers.MediaTypeWithQualityHeaderValue]::new('application/json'))
-        $response = $client.SendAsync($request).GetAwaiter().GetResult()
-        $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-        if ([int]$response.StatusCode -ne 204) {
-            $detail = $null
-            if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
-                try { $detail = [string](($responseBody | ConvertFrom-Json).detail) }
-                catch { }
+        for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+            $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, $uri)
+            $response = $null
+            try {
+                $request.Headers.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $PreflightToken)
+                $request.Headers.Accept.Add([Net.Http.Headers.MediaTypeWithQualityHeaderValue]::new('application/json'))
+                $response = $client.SendAsync($request).GetAwaiter().GetResult()
+                $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                $statusCode = [int]$response.StatusCode
+                if ($statusCode -eq 204) { return $true }
+
+                if ($statusCode -eq 404) {
+                    if ($attempt -lt $MaximumAttempts) {
+                        Start-Sleep -Milliseconds $RetryDelayMilliseconds
+                        continue
+                    }
+                    throw "Cloudflare Worker GitHub App preflight authorization did not become ready after $MaximumAttempts attempts (HTTP 404)."
+                }
+
+                $detail = $null
+                if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
+                    try { $detail = [string](($responseBody | ConvertFrom-Json).detail) }
+                    catch { }
+                }
+                if ([string]::IsNullOrWhiteSpace($detail)) { $detail = $response.ReasonPhrase }
+                throw "Cloudflare Worker GitHub App authentication preflight failed (HTTP $statusCode): $detail"
             }
-            if ([string]::IsNullOrWhiteSpace($detail)) { $detail = $response.ReasonPhrase }
-            throw "Cloudflare Worker GitHub App authentication preflight failed (HTTP $([int]$response.StatusCode)): $detail"
+            finally {
+                if ($null -ne $response) { $response.Dispose() }
+                $request.Dispose()
+            }
         }
-        return $true
     }
     finally {
-        if ($null -ne $response) { $response.Dispose() }
-        $request.Dispose()
         $client.Dispose()
     }
 }
