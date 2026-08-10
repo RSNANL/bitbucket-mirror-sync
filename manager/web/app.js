@@ -584,12 +584,6 @@ elements.openAuthorization.addEventListener('click', () => {
   navigateAuthenticationPopup(state.authorization.authorization_uri);
 });
 
-for (const link of document.querySelectorAll('.nav-link')) {
-  link.addEventListener('click', () => {
-    for (const item of document.querySelectorAll('.nav-link')) item.classList.toggle('active', item === link);
-  });
-}
-
 async function initialize() {
   try {
     const bootstrap = await api('/api/bootstrap');
