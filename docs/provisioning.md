@@ -120,7 +120,7 @@ After the manual dispatch succeeds, validate the real Bitbucket webhook, branch 
 
 The supplied path identifies an existing checkout whose `origin` must resolve to the configured Bitbucket source. The validation derives the source default branch from Bitbucket and uses a temporary clone, so it does not change the supplied checkout or assume that its default branch is named `main`.
 
-Only after the manual dispatch and mirror sync validation succeed should `scheduled_recovery` be changed to `true`. That configuration change follows the same review and merge path and is followed by another Worker deployment so the deployed snapshot remains aligned with `main`.
+Only after the manual dispatch and mirror sync validation succeed should `scheduled_recovery` be changed to `true`. This isolated, pre-validated operational configuration change may be committed directly to `main` by an authorized maintainer. Changes to code, workflows, schemas, interfaces, security boundaries or functional behavior continue to require a pull request. Redeploy the Worker afterward so the deployed snapshot remains aligned with `main`.
 
 The existing `mirror-doser.yml` workflow remains active and scheduled independently during this migration. Do not enable a generic schedule for the doser until its dedicated workflow has been explicitly retired.
 
