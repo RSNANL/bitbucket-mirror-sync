@@ -72,7 +72,11 @@
               <p class="eyebrow">Configured infrastructure</p>
               <h2 id="mirrors-title">Mirrors</h2>
             </div>
-            <span class="count" id="mirror-count">0 mirrors</span>
+            <div class="mirror-heading-actions">
+              <span class="status-checked" id="status-checked">Status not checked</span>
+              <span class="count" id="mirror-count">0 mirrors</span>
+              <button class="button ghost compact" id="refresh-status" type="button">Refresh status</button>
+            </div>
           </div>
           <div class="mirror-list" id="mirror-list" aria-live="polite"></div>
         </section>
@@ -131,6 +135,13 @@
           <button class="button ghost compact validate" type="button">Validate</button>
           <button class="button ghost compact dispatch" type="button">Dispatch</button>
           <button class="button compact manage" type="button">Manage</button>
+        </div>
+        <div class="mirror-status-grid">
+          <div class="status-item" data-status-kind="bitbucket_repository"><span class="status-dot" aria-hidden="true"></span><div><small>Bitbucket source</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open</a></div></div>
+          <div class="status-item" data-status-kind="bitbucket_webhook"><span class="status-dot" aria-hidden="true"></span><div><small>Bitbucket webhook</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open</a></div></div>
+          <div class="status-item" data-status-kind="cloudflare_worker"><span class="status-dot" aria-hidden="true"></span><div><small>Cloudflare Worker</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open route</a></div></div>
+          <div class="status-item" data-status-kind="github_repository"><span class="status-dot" aria-hidden="true"></span><div><small>GitHub target</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open</a></div></div>
+          <div class="status-item" data-status-kind="github_actions"><span class="status-dot" aria-hidden="true"></span><div><small>GitHub Actions</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open run</a></div></div>
         </div>
       </article>
     </template>
