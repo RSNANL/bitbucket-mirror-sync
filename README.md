@@ -19,7 +19,6 @@ Configuration-driven infrastructure for disposable GitHub mirrors of authoritati
   validate.yml              Secret-free infrastructure validation.
   mirror.yml                Generic mirror runtime.
   mirror-recovery.yml       Recovery matrix for configured mirrors.
-  mirror-doser.yml          Legacy doser mirror until explicit migration.
 config/
   mirrors.json              Non-secret mirror registry.
   mirrors.schema.json       Mirror configuration contract.
@@ -50,8 +49,6 @@ docs/
   provisioning.md
   operations.md
 ```
-
-`mirror-doser.yml` remains intentionally independent from the generic registry, credentials and recovery matrix while the new infrastructure is being proven with the vacuum blueprint mirror. It already reuses the generic Git runtime, but must not be removed or given a second generic schedule until the doser is explicitly migrated and its dedicated workflow has been retired.
 
 ## Management authentication
 
