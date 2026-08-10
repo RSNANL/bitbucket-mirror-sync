@@ -47,9 +47,9 @@ Then apply the same parameters. The deployment uses the active Cloudflare OAuth 
 
 Run once without `-Apply` and review the plan. With `-Apply`, `New-Mirror.ps1`:
 
-1. verifies that the Bitbucket source exists and the GitHub target does not;
+1. verifies that the Bitbucket source exists and that the requested GitHub target mode is valid;
 2. generates two unique Ed25519 keypairs in an OS temporary directory;
-3. creates an empty private GitHub target repository;
+3. creates an empty private GitHub target repository, or explicitly adopts an existing private target with `-UseExistingTarget`;
 4. registers a read-only Bitbucket deploy key;
 5. registers a write-enabled GitHub deploy key;
 6. creates the derived GitHub Environment;
@@ -77,6 +77,20 @@ Example planning call:
 After review:
 
 ```powershell
+./tools/New-Mirror.ps1 @parameters -Apply
+```
+
+For an intentional migration that must preserve an existing private mirror repository, add `-UseExistingTarget` to both the planning and apply calls. This mode requires the target to exist and be private. It adds new generically managed deploy keys, environment secrets and webhook resources without deleting existing refs or legacy credentials. Keep the legacy trigger active until the generic dispatch and `-ValidateSync` both pass; remove the legacy workflow, keys, secrets and webhook only afterward.
+
+```powershell
+$parameters = @{
+    MirrorId = 'aquarium-nutrient-doser'
+    BitbucketRepository = 'rsna_nl/aquarium-nutrient-doser'
+    GitHubRepository = 'RSNANL/aquarium-nutrient-doser-mirror'
+    UseExistingTarget = $true
+}
+
+./tools/New-Mirror.ps1 @parameters
 ./tools/New-Mirror.ps1 @parameters -Apply
 ```
 
