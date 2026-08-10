@@ -23,6 +23,8 @@ test('manager exposes every existing management action through an allowlist', ()
 
 test('local host enforces the loopback, origin, token, and operation boundaries', () => {
   assert.match(server, /http:\/\/127\.0\.0\.1:\$Port/);
+  assert.match(server, /Test-ManagerLoopbackClient -RemoteEndPoint \$request\.RemoteEndPoint/);
+  assert.doesNotMatch(server, /\$request\.UserHostAddress/);
   assert.match(server, /X-Mirror-Manager-Token/);
   assert.match(server, /The request origin is not the active Mirror Manager/);
   assert.match(server, /Another Mirror Manager operation is already running/);

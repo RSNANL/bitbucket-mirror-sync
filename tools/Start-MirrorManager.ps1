@@ -71,6 +71,16 @@ function Assert-ManagerMutationRequest {
     if ($Request.ContentType -notlike 'application/json*') { throw 'Mutating requests require application/json.' }
 }
 
+function Test-ManagerLoopbackClient {
+    param([Parameter(Mandatory)][Net.IPEndPoint]$RemoteEndPoint)
+
+    $address = $RemoteEndPoint.Address
+    if ($address.IsIPv4MappedToIPv6) {
+        $address = $address.MapToIPv4()
+    }
+    return [Net.IPAddress]::IsLoopback($address)
+}
+
 function Get-ManagerOperationState {
     if ($null -eq $operation) { return $null }
     if ($operation.Status -ne 'running') {
@@ -187,7 +197,9 @@ try {
         $context = $listener.GetContext()
         try {
             $request = $context.Request
-            if ($request.UserHostAddress -notin @('127.0.0.1', '::1')) { throw 'Mirror Manager only accepts loopback clients.' }
+            if (-not (Test-ManagerLoopbackClient -RemoteEndPoint $request.RemoteEndPoint)) {
+                throw 'Mirror Manager only accepts loopback clients.'
+            }
             $path = $request.Url.AbsolutePath
             if ($request.HttpMethod -eq 'GET' -and $path -eq '/api/bootstrap') {
                 Send-ManagerJson -Context $context -StatusCode 200 -Value @{ request_token = $csrfToken }

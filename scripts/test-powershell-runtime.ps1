@@ -62,4 +62,39 @@ foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-Mirror
     }
 }
 
+$managerServerPath = Join-Path $RepositoryRoot 'tools/Start-MirrorManager.ps1'
+$managerServerTokens = $null
+$managerServerParseErrors = $null
+$managerServerAst = [Management.Automation.Language.Parser]::ParseFile(
+    $managerServerPath,
+    [ref]$managerServerTokens,
+    [ref]$managerServerParseErrors
+)
+if (@($managerServerParseErrors).Count -gt 0) {
+    throw 'Start-MirrorManager.ps1 could not be parsed for runtime tests.'
+}
+
+$loopbackFunctionAst = $managerServerAst.Find({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Test-ManagerLoopbackClient'
+}, $true)
+if ($null -eq $loopbackFunctionAst) {
+    throw 'Test-ManagerLoopbackClient was not found in Start-MirrorManager.ps1.'
+}
+
+. ([scriptblock]::Create($loopbackFunctionAst.Extent.Text))
+
+foreach ($addressText in @('127.0.0.1', '::1', '::ffff:127.0.0.1')) {
+    $endpoint = [Net.IPEndPoint]::new([Net.IPAddress]::Parse($addressText), 49152)
+    if (-not (Test-ManagerLoopbackClient -RemoteEndPoint $endpoint)) {
+        throw "Loopback address was rejected: $addressText"
+    }
+}
+
+$remoteEndpoint = [Net.IPEndPoint]::new([Net.IPAddress]::Parse('192.0.2.1'), 49152)
+if (Test-ManagerLoopbackClient -RemoteEndPoint $remoteEndpoint) {
+    throw 'A non-loopback address was accepted.'
+}
+
 Write-Host 'PowerShell mirror reference wait modes are valid.'
