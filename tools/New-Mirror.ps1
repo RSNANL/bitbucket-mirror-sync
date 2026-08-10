@@ -132,7 +132,7 @@ try {
 
     Write-Host 'Mirror infrastructure has been provisioned and the local configuration has been prepared.'
     Write-Host 'No commit, push, Worker deployment or mirror workflow dispatch was performed.'
-    Write-Host 'Review and commit the configuration, deploy Worker, then run Test-Mirror.ps1 -Dispatch.'
+    Write-Host 'Review and commit the configuration, deploy Worker, then run Test-Mirror.ps1 with -Dispatch followed by -ValidateRefSynchronization and the source checkout path.'
 }
 finally {
     $bitbucketCredentials = $null

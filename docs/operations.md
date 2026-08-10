@@ -25,6 +25,17 @@ Worker deployment never commits, pushes, provisions a mirror or dispatches a wor
 
 `Test-Mirror.ps1` checks the Bitbucket source, private GitHub target, managed deploy keys, exact active Bitbucket `repo:push` webhook URL, required GitHub Environment secret names and required Cloudflare secret-binding names. `-Dispatch` is rejected for a disabled mirror and otherwise submits the generic mirror workflow. Secret values remain unreadable by design and are proven only by a successful dispatch and webhook delivery.
 
+After the configuration and Worker deployment are active, validate the complete webhook-driven ref lifecycle from an existing local checkout of the configured Bitbucket source:
+
+```powershell
+./tools/Test-Mirror.ps1 `
+  -MirrorId generic-vacuum-statemachine-blueprint `
+  -ValidateRefSynchronization `
+  -SourceRepositoryPath 'D:\RSNA\Home Assistant\generic-vacuum-statemachine-blueprint'
+```
+
+This mode verifies that the local checkout's `origin` resolves to the configured Bitbucket repository, derives the actual default branch from Bitbucket and works only in a temporary clone. It creates an empty commit on a unique temporary branch with a lightweight tag, pushes both source refs, verifies both GitHub refs at the exact commit SHA, removes both source refs and verifies that GitHub prunes them. The source checkout and its active branch remain unchanged. Failure handling attempts to remove any temporary Bitbucket refs and the temporary clone before reporting the original failure; success is reported only after the complete synchronization and cleanup sequence passes.
+
 ## Validate infrastructure changes
 
 `validate.yml` runs automatically for pull requests to `main` and can also be started manually. It validates configuration, schema syntax, PowerShell and shell syntax, secret scanning, local branch/tag pruning, Worker behavior and Worker type safety. The job has only `contents: read` and does not receive management or mirror runtime credentials.
