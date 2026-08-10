@@ -30,7 +30,7 @@ After the configuration and Worker deployment are active, validate the complete 
 ```powershell
 ./tools/Test-Mirror.ps1 `
   -MirrorId generic-vacuum-statemachine-blueprint `
-  -ValidateRefSynchronization `
+  -ValidateSync `
   -SourceRepositoryPath 'D:\RSNA\Home Assistant\generic-vacuum-statemachine-blueprint'
 ```
 

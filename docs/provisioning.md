@@ -98,7 +98,7 @@ Then activate the reviewed configuration in this order:
 4. update the local `main` checkout;
 5. redeploy the Worker from that exact `main` tree without the deleted local GitHub App private-key file;
 6. submit and verify a manual generic workflow dispatch;
-7. run the ref synchronization validation from a local checkout of the configured Bitbucket source;
+7. run the mirror sync validation from a local checkout of the configured Bitbucket source;
 8. verify that the temporary branch and tag were mirrored at the exact commit SHA and pruned automatically.
 
 The generic workflow must be present on the repository default branch before webhook or manual dispatch can succeed. Worker deployment is a management operation and therefore uses the current interactive Cloudflare management session; no Cloudflare deployment token is stored in GitHub Actions.
@@ -114,13 +114,13 @@ After the manual dispatch succeeds, validate the real Bitbucket webhook, branch 
 ```powershell
 ./tools/Test-Mirror.ps1 `
   -MirrorId generic-vacuum-statemachine-blueprint `
-  -ValidateRefSynchronization `
+  -ValidateSync `
   -SourceRepositoryPath 'D:\RSNA\Home Assistant\generic-vacuum-statemachine-blueprint'
 ```
 
 The supplied path identifies an existing checkout whose `origin` must resolve to the configured Bitbucket source. The validation derives the source default branch from Bitbucket and uses a temporary clone, so it does not change the supplied checkout or assume that its default branch is named `main`.
 
-Only after the manual dispatch and ref synchronization validation succeed should `scheduled_recovery` be changed to `true`. That configuration change follows the same review and merge path and is followed by another Worker deployment so the deployed snapshot remains aligned with `main`.
+Only after the manual dispatch and mirror sync validation succeed should `scheduled_recovery` be changed to `true`. That configuration change follows the same review and merge path and is followed by another Worker deployment so the deployed snapshot remains aligned with `main`.
 
 The existing `mirror-doser.yml` workflow remains active and scheduled independently during this migration. Do not enable a generic schedule for the doser until its dedicated workflow has been explicitly retired.
 

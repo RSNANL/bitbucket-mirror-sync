@@ -39,7 +39,7 @@ tools/
   Modules/                  Provider and session modules.
   Deploy-MirrorWorker.ps1   Session-scoped Worker deployment and bootstrap.
   New-Mirror.ps1            Mirror provisioning.
-  Test-Mirror.ps1           Resource, dispatch and ref synchronization validation.
+  Test-Mirror.ps1           Resource, dispatch and mirror sync validation.
   Rotate-MirrorKeys.ps1     Two-phase key rotation.
   Repair-Mirror.ps1         Mirror and credential repair.
   Remove-Mirror.ps1         Managed resource removal.

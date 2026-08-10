@@ -3,9 +3,9 @@ param(
     [Parameter(Mandatory)][string]$MirrorId,
     [string]$ConfigPath = 'config/mirrors.json',
     [switch]$Dispatch,
-    [Parameter(Mandatory, ParameterSetName = 'RefSynchronization')][switch]$ValidateRefSynchronization,
-    [Parameter(Mandatory, ParameterSetName = 'RefSynchronization')][string]$SourceRepositoryPath,
-    [Parameter(ParameterSetName = 'RefSynchronization')][ValidateRange(30, 1800)][int]$RefSynchronizationTimeoutSeconds = 300
+    [Parameter(Mandatory, ParameterSetName = 'SyncValidation')][switch]$ValidateSync,
+    [Parameter(Mandatory, ParameterSetName = 'SyncValidation')][string]$SourceRepositoryPath,
+    [Parameter(ParameterSetName = 'SyncValidation')][ValidateRange(30, 1800)][int]$SyncTimeoutSeconds = 300
 )
 
 Set-StrictMode -Version Latest
@@ -85,7 +85,7 @@ function Wait-GitHubReferences {
     throw "GitHub did not mirror both validation refs at SHA $ExpectedSha within $TimeoutSeconds seconds. Branch SHA: '$branchSha'; tag SHA: '$tagSha'."
 }
 
-function Invoke-MirrorRefSynchronizationValidation {
+function Invoke-MirrorSyncValidation {
     param(
         [Parameter(Mandatory)][object]$Mirror,
         [Parameter(Mandatory)][object]$BitbucketRepository,
@@ -172,7 +172,7 @@ function Invoke-MirrorRefSynchronizationValidation {
             '-C', $temporaryRepository, 'switch', '-c', $testBranch
         ))
         [void](Invoke-ExternalCommand -FilePath $git -ArgumentList @(
-            '-C', $temporaryRepository, 'commit', '--allow-empty', '-m', 'Validate mirror ref synchronization'
+            '-C', $temporaryRepository, 'commit', '--allow-empty', '-m', 'Validate mirror synchronization'
         ))
         [void](Invoke-ExternalCommand -FilePath $git -ArgumentList @(
             '-C', $temporaryRepository, 'tag', $testTag
@@ -247,15 +247,15 @@ function Invoke-MirrorRefSynchronizationValidation {
         throw $testFailure.Exception
     }
     if ($cleanupFailures.Count -gt 0) {
-        throw "Mirror ref synchronization validation cleanup failed:`n$($cleanupFailures -join "`n")"
+        throw "Mirror synchronization validation cleanup failed:`n$($cleanupFailures -join "`n")"
     }
-    Write-Host 'MIRROR REF SYNCHRONIZATION VALIDATION PASSED'
+    Write-Host 'MIRROR SYNC VALIDATION PASSED'
 }
 
 $config = Get-MirrorConfiguration -ConfigPath $ConfigPath
 $mirror = $config.mirrors | Where-Object { $_.id -eq $MirrorId } | Select-Object -First 1
 if (-not $mirror) { throw "Mirror is not configured: $MirrorId" }
-if (($Dispatch -or $ValidateRefSynchronization) -and -not $mirror.enabled) {
+if (($Dispatch -or $ValidateSync) -and -not $mirror.enabled) {
     throw "Mirror is disabled and cannot be exercised: $MirrorId"
 }
 if (
@@ -318,13 +318,13 @@ try {
         Write-Host 'Mirror workflow dispatch submitted. Verify the resulting GitHub Actions run before finalizing key rotation or cleanup.'
     }
 
-    if ($ValidateRefSynchronization) {
-        Invoke-MirrorRefSynchronizationValidation `
+    if ($ValidateSync) {
+        Invoke-MirrorSyncValidation `
             -Mirror $mirror `
             -BitbucketRepository $sourceRepository `
             -GitHubRepository $targetRepository `
             -RepositoryPath $SourceRepositoryPath `
-            -TimeoutSeconds $RefSynchronizationTimeoutSeconds
+            -TimeoutSeconds $SyncTimeoutSeconds
     }
 }
 finally {
