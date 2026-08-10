@@ -8,6 +8,7 @@ const server = await readFile(new URL('../tools/Start-MirrorManager.ps1', import
 const session = await readFile(new URL('../tools/Modules/Mirror.Session.psm1', import.meta.url), 'utf8');
 const managerHtml = await readFile(new URL('../manager/web/index.html', import.meta.url), 'utf8');
 const managerApp = await readFile(new URL('../manager/web/app.js', import.meta.url), 'utf8');
+const managerDocs = await readFile(new URL('../docs/mirror-manager.md', import.meta.url), 'utf8');
 
 test('manager exposes every existing management action through an allowlist', () => {
   for (const action of [
@@ -48,4 +49,6 @@ test('web app exposes provider, mirror, operation, and activity surfaces', () =>
     assert.match(managerApp, new RegExp(`['"]${action}['"]`));
   }
   assert.doesNotMatch(managerApp, /localStorage|sessionStorage|document\.cookie/);
+  assert.match(managerHtml, /Apply reviewed plan/);
+  assert.match(managerDocs, /only authoritative non-secret registry/);
 });

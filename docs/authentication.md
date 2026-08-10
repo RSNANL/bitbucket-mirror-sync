@@ -6,6 +6,8 @@ Every management operation starts from an explicitly authenticated PowerShell se
 
 `Connect-MirrorSession.ps1` performs three interactive provider authorizations and keeps the resulting short-lived access tokens only in process-scoped environment variables. Closing PowerShell or running `Disconnect-MirrorSession.ps1` removes the local session credentials. Refresh tokens are never retained or used for silent reauthentication.
 
+Mirror Manager starts each provider authorization independently from the local UI. GitHub's device code is shown in the Activity output. Cloudflare and Bitbucket return through their fixed loopback callbacks; their completion pages attempt to close automatically after a successful exchange. Provider browser restrictions may still require the operator to close a completed window manually.
+
 Disconnect also attempts to revoke the Cloudflare access token. GitHub and Bitbucket access tokens are removed locally and then expire according to the provider response; disconnect does not claim immediate provider-side revocation for those two tokens.
 
 A new PowerShell process therefore requires a new interactive authorization.
@@ -73,7 +75,7 @@ The client is created once in the Bitbucket workspace that owns the managed sour
 
 The callback URI is fixed by the management implementation and is not user-configurable.
 
-Bitbucket requires the OAuth client secret when the authorization code is exchanged. The operator retrieves that provider-held value and enters it through a secure prompt during every management session. The tooling never writes it to configuration, environment variables, a keyring or Git. The returned access token is retained only in the PowerShell process. The refresh token is discarded; when the access token expires a new interactive authorization is required.
+Bitbucket requires the OAuth client secret when the authorization code is exchanged. The operator retrieves that provider-held value and enters it through a secure PowerShell prompt or the Mirror Manager password field during every management session. The tooling never writes it to configuration, environment variables, browser storage, a keyring or Git. The returned access token is retained only in the PowerShell process. The refresh token is discarded; when the access token expires a new interactive authorization is required.
 
 ## Persistent operational secrets
 

@@ -41,8 +41,6 @@ The committed registry on `main` is authoritative. The Worker contains a deploym
 
 Provider provisioning may precede the merge, but a newly created webhook is not operationally active until the reviewed configuration is on `main` and the Worker has been redeployed. Failed deliveries during this controlled activation interval do not modify the Bitbucket source.
 
-The dedicated `mirror-doser.yml` workflow is a temporary legacy boundary. It reuses `scripts/mirror.sh`, but continues to own the aquarium-doser credentials and fallback schedule until that mirror is deliberately registered, tested and migrated to the generic registry and recovery matrix.
-
 ## Management flow
 
 ```text
@@ -54,6 +52,18 @@ PowerShell management process
   -> provision / test / rotate / repair / remove
   -> disconnect or close process
 ```
+
+Mirror Manager is an alternative local operator surface within the same boundary:
+
+```text
+Browser on 127.0.0.1
+  -> secured loopback API in one PowerShell process
+  -> allowlisted management operation and parameters
+  -> existing PowerShell scripts and provider modules
+  -> same process-scoped provider credentials
+```
+
+The browser never calls a provider directly and contains no provider access token. CLI and UI remain thin operator surfaces over the same scripts, modules, configuration validation and plan/apply behavior.
 
 A management session cannot silently reuse a locally stored provider account token. The provider remains responsible for its browser login, consent and multi-factor-authentication policy.
 
