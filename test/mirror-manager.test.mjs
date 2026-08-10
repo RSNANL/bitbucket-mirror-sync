@@ -34,6 +34,9 @@ test('local host enforces the loopback, origin, token, and operation boundaries'
 test('loopback OAuth completion attempts to close its browser window', () => {
   assert.match(session, /window\.close\(\)/);
   assert.match(session, /\[AllowNull\(\)\]\[string\]\$ClientSecret/);
+  assert.match(session, /MIRROR_MANAGER_AUTHORIZATION:/);
+  assert.match(server, /authorization = \$operation\.Authorization/);
+  assert.match(server, /AddParameter\('NoBrowser', \$true\)/);
 });
 
 test('configuration mutations preserve plan/apply behavior', () => {
@@ -52,5 +55,10 @@ test('web app exposes provider, mirror, operation, and activity surfaces', () =>
   }
   assert.doesNotMatch(managerApp, /localStorage|sessionStorage|document\.cookie/);
   assert.match(managerHtml, /Apply reviewed plan/);
+  assert.match(managerHtml, /id="authorization-code"/);
+  assert.match(managerApp, /window\.open\('', 'mirror-manager-provider-authorization', 'popup=yes/);
+  assert.match(managerApp, /navigator\.clipboard\.writeText\(code\)/);
+  assert.match(managerApp, /state\.authPopup\.location\.replace\(uri\)/);
+  assert.match(managerApp, /closeAuthenticationPopup\(\)/);
   assert.match(managerDocs, /only authoritative non-secret registry/);
 });

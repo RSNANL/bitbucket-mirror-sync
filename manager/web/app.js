@@ -5,6 +5,8 @@ const state = {
   poller: null,
   dialogAction: null,
   pendingPlan: null,
+  authPopup: null,
+  authorization: null,
 };
 
 const elements = {
@@ -25,6 +27,13 @@ const elements = {
   dialogFields: document.querySelector('#dialog-fields'),
   dialogNote: document.querySelector('#dialog-note'),
   dialogSubmit: document.querySelector('#dialog-submit'),
+  authorization: document.querySelector('#authorization'),
+  authorizationTitle: document.querySelector('#authorization-title'),
+  authorizationMessage: document.querySelector('#authorization-message'),
+  authorizationCodeWrap: document.querySelector('#authorization-code-wrap'),
+  authorizationCode: document.querySelector('#authorization-code'),
+  copyAuthorizationCode: document.querySelector('#copy-authorization-code'),
+  openAuthorization: document.querySelector('#open-authorization'),
 };
 
 async function api(path, options = {}) {
@@ -48,6 +57,55 @@ function showError(error) {
 function clearError() {
   elements.notice.textContent = '';
   elements.notice.classList.add('hidden');
+}
+
+function openAuthenticationPopup() {
+  const popup = window.open('', 'mirror-manager-provider-authorization', 'popup=yes,width=620,height=760,resizable=yes,scrollbars=yes');
+  if (!popup) return null;
+  popup.document.title = 'Mirror Manager authorization';
+  popup.document.body.textContent = 'Preparing provider authorization…';
+  popup.focus();
+  return popup;
+}
+
+function navigateAuthenticationPopup(uri) {
+  if (!uri) return;
+  if (!state.authPopup || state.authPopup.closed) state.authPopup = openAuthenticationPopup();
+  if (!state.authPopup) return;
+  state.authPopup.location.replace(uri);
+  state.authPopup.focus();
+}
+
+function closeAuthenticationPopup() {
+  if (state.authPopup && !state.authPopup.closed) state.authPopup.close();
+  state.authPopup = null;
+}
+
+function renderAuthorization(authorization) {
+  state.authorization = authorization || null;
+  elements.authorization.classList.toggle('hidden', !authorization);
+  if (!authorization) return;
+
+  const label = authorization.provider[0].toUpperCase() + authorization.provider.slice(1);
+  elements.authorizationTitle.textContent = `Complete ${label} authentication`;
+  elements.authorizationMessage.textContent = authorization.user_code
+    ? 'Copy this code into GitHub. This popup closes as soon as authorization succeeds.'
+    : 'Complete the provider consent flow in the popup. It closes automatically after the callback.';
+  elements.authorizationCode.textContent = authorization.user_code || '';
+  elements.authorizationCodeWrap.classList.toggle('hidden', !authorization.user_code);
+  elements.copyAuthorizationCode.classList.toggle('hidden', !authorization.user_code);
+}
+
+async function copyAuthorizationCode() {
+  const code = state.authorization?.user_code;
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(code);
+    elements.copyAuthorizationCode.textContent = 'Copied';
+    setTimeout(() => { elements.copyAuthorizationCode.textContent = 'Copy code'; }, 1400);
+  } catch {
+    showError(`Copy failed. Select the code manually: ${code}`);
+  }
 }
 
 function formatExpiry(value) {
@@ -111,6 +169,18 @@ function renderOperation(operation) {
   elements.operationState.textContent = status[0].toUpperCase() + status.slice(1);
   elements.operationName.textContent = operation ? operation.action : 'No operation running';
   elements.applyPlan.classList.toggle('hidden', !(operation?.status === 'succeeded' && state.pendingPlan));
+  if (operation?.action === 'connect-provider') {
+    if (operation.authorization?.authorization_uri !== state.authorization?.authorization_uri) {
+      renderAuthorization(operation.authorization);
+      if (operation.authorization) navigateAuthenticationPopup(operation.authorization.authorization_uri);
+    }
+    if (operation.status === 'succeeded' || operation.status === 'failed') {
+      closeAuthenticationPopup();
+      renderAuthorization(null);
+    }
+  } else if (operation) {
+    renderAuthorization(null);
+  }
   if (operation) {
     const lines = [...(operation.output || [])];
     if (operation.error) lines.push('', `ERROR: ${operation.error}`);
@@ -158,6 +228,10 @@ async function runOperation(action, args = {}, isApply = false) {
     if (!state.poller) state.poller = setInterval(pollOperation, 800);
   } catch (error) {
     if (!isApply) state.pendingPlan = null;
+    if (action === 'connect-provider') {
+      closeAuthenticationPopup();
+      renderAuthorization(null);
+    }
     showError(error);
   }
 }
@@ -232,7 +306,12 @@ function connectProvider(provider) {
       : 'The provider authorization page opens in your browser and closes after a successful callback.',
     submit: 'Start authorization',
     fields,
-    onSubmit: (values) => runOperation('connect-provider', { Provider: label, ...values }),
+    onSubmit: (values) => {
+      closeAuthenticationPopup();
+      renderAuthorization(null);
+      state.authPopup = openAuthenticationPopup();
+      runOperation('connect-provider', { Provider: label, ...values });
+    },
   });
 }
 
@@ -358,6 +437,13 @@ document.querySelector('#disconnect').addEventListener('click', () => openDialog
   note: 'Clears all management credentials from the local host process.',
   onSubmit: () => runOperation('disconnect-session'),
 }));
+elements.copyAuthorizationCode.addEventListener('click', copyAuthorizationCode);
+elements.openAuthorization.addEventListener('click', () => {
+  if (!state.authorization) return;
+  closeAuthenticationPopup();
+  state.authPopup = openAuthenticationPopup();
+  navigateAuthenticationPopup(state.authorization.authorization_uri);
+});
 
 for (const link of document.querySelectorAll('.nav-link')) {
   link.addEventListener('click', () => {

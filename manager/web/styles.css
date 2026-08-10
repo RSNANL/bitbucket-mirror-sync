@@ -96,6 +96,13 @@ section { scroll-margin-top: 20px; margin-top: 46px; }
 .terminal-bar strong { margin-left: 6px; color: var(--muted); font-size: 10px; font-weight: 650; }
 pre { min-height: 180px; max-height: 420px; overflow: auto; margin: 0; padding: 20px; color: #b9c9cf; font: 11px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
 .notice { margin: -18px 0 22px; padding: 12px 15px; border: 1px solid rgba(255, 127, 127, .32); border-radius: 9px; color: #ffd9d9; background: rgba(255, 127, 127, .08); font-size: 12px; }
+.authorization { margin: -18px 0 28px; padding: 18px; border: 1px solid rgba(86, 224, 187, .3); border-radius: 12px; background: var(--accent-soft); display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; align-items: center; gap: 22px; }
+.authorization h2 { font-size: 16px; }
+.authorization p:last-child { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.authorization-code-wrap { display: grid; gap: 5px; }
+.authorization-code-wrap span { color: var(--muted); font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .1em; }
+.authorization-code-wrap strong { font: 800 18px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .12em; }
+.authorization-actions { display: flex; gap: 8px; }
 .hidden { display: none !important; }
 
 dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 0; border: 1px solid var(--line); border-radius: 15px; color: var(--text); background: var(--panel); box-shadow: 0 40px 120px #000; }
@@ -120,6 +127,8 @@ dialog form { padding: 24px; }
   .brand > span:last-child, .nav-link, .sidebar-foot > span:last-child { font-size: 0; }
   .nav-link::first-letter { font-size: 14px; }
   .provider-grid { grid-template-columns: 1fr; }
+  .authorization { grid-template-columns: 1fr auto; }
+  .authorization > div:first-child { grid-column: 1 / -1; }
   .mirror-card { grid-template-columns: 1fr auto; }
   .mirror-flags { grid-column: 1; }
   .mirror-actions { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; }
@@ -137,5 +146,7 @@ dialog form { padding: 24px; }
   .mirror-flags, .mirror-actions { grid-column: 1; grid-row: auto; }
   .mirror-actions { flex-direction: row; flex-wrap: wrap; }
   .form-grid { grid-template-columns: 1fr; }
+  .authorization { grid-template-columns: 1fr; }
+  .authorization-actions { flex-wrap: wrap; }
   .field.full { grid-column: 1; }
 }

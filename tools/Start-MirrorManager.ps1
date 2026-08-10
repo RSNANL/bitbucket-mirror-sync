@@ -92,17 +92,33 @@ function Get-ManagerOperationState {
             completed_at = $operation.CompletedAt
             output = @($operation.Output)
             error = $operation.Error
+            authorization = $operation.Authorization
         }
     }
 
     $information = @($operation.PowerShell.Streams.Information | ForEach-Object { [string]$_.MessageData })
+    $visibleInformation = @()
+    foreach ($line in $information) {
+        if ($line.StartsWith('MIRROR_MANAGER_AUTHORIZATION:')) {
+            try {
+                $operation.Authorization = $line.Substring('MIRROR_MANAGER_AUTHORIZATION:'.Length) | ConvertFrom-Json
+            }
+            catch {
+                $operation.Status = 'failed'
+                $operation.Error = 'The provider authorization response could not be read by Mirror Manager.'
+            }
+        }
+        else {
+            $visibleInformation += $line
+        }
+    }
     $warnings = @($operation.PowerShell.Streams.Warning | ForEach-Object { [string]$_ })
     $errors = @($operation.PowerShell.Streams.Error | ForEach-Object { [string]$_ })
 
     if ($operation.Status -eq 'running' -and $operation.Async.IsCompleted) {
         try {
             $result = @($operation.PowerShell.EndInvoke($operation.Async) | ForEach-Object { [string]$_ })
-            $operation.Output = @($information) + @($warnings | ForEach-Object { "WARNING: $_" }) + $result
+            $operation.Output = @($visibleInformation) + @($warnings | ForEach-Object { "WARNING: $_" }) + $result
             if ($operation.PowerShell.HadErrors -or $errors.Count -gt 0) {
                 $operation.Status = 'failed'
                 $operation.Error = $errors -join "`n"
@@ -113,7 +129,7 @@ function Get-ManagerOperationState {
         catch {
             $operation.Status = 'failed'
             $operation.Error = $_.Exception.Message
-            $operation.Output = @($information) + @($warnings | ForEach-Object { "WARNING: $_" })
+            $operation.Output = @($visibleInformation) + @($warnings | ForEach-Object { "WARNING: $_" })
         }
         finally {
             $operation.CompletedAt = [DateTimeOffset]::UtcNow.ToString('o')
@@ -121,7 +137,7 @@ function Get-ManagerOperationState {
         }
     }
 
-    $liveOutput = if ($operation.Status -eq 'running') { @($information) + @($warnings | ForEach-Object { "WARNING: $_" }) } else { @($operation.Output) }
+    $liveOutput = if ($operation.Status -eq 'running') { @($visibleInformation) + @($warnings | ForEach-Object { "WARNING: $_" }) } else { @($operation.Output) }
     return [pscustomobject]@{
         id = $operation.Id
         action = $operation.Action
@@ -130,6 +146,7 @@ function Get-ManagerOperationState {
         completed_at = $operation.CompletedAt
         output = $liveOutput
         error = $operation.Error
+        authorization = $operation.Authorization
     }
 }
 
@@ -147,6 +164,9 @@ function Start-ManagerOperation {
     foreach ($entry in $invocation.Parameters.GetEnumerator()) {
         [void]$powerShell.AddParameter([string]$entry.Key, $entry.Value)
     }
+    if ($Action -eq 'connect-provider') {
+        [void]$powerShell.AddParameter('NoBrowser', $true)
+    }
     if ($Action -in @('new-mirror', 'remove-mirror', 'repair-mirror', 'rotate-keys', 'deploy-worker', 'set-mirror')) {
         [void]$powerShell.AddParameter('Confirm', $false)
     }
@@ -162,6 +182,7 @@ function Start-ManagerOperation {
         Async = $async
         Output = @()
         Error = $null
+        Authorization = $null
     }
     return Get-ManagerOperationState
 }

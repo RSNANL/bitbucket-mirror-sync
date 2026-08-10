@@ -23,7 +23,7 @@ Stop the host with `Ctrl+C`. The host stops an active operation and clears its p
 5. Validate the affected mirror and review any `config/mirrors.json` diff.
 6. Stop or explicitly disconnect the management session when finished.
 
-GitHub uses Device Flow. Copy the displayed device code from Activity into the provider page. Cloudflare and Bitbucket use fixed loopback callbacks on ports `53682` and `53683`; successful callback pages attempt to close themselves.
+GitHub uses Device Flow. Mirror Manager opens the authorization page in a compact popup and shows the device code with a copy action in the main interface. Cloudflare and Bitbucket use fixed loopback callbacks on ports `53682` and `53683`. Because every provider window is opened by the interface, it closes automatically after successful authentication. When the browser blocks the initial popup, use **Open authorization** in the visible authorization panel.
 
 ## Available operations
 

@@ -39,6 +39,22 @@
 
         <div id="notice" class="notice hidden" role="status"></div>
 
+        <aside id="authorization" class="authorization hidden" aria-live="polite">
+          <div>
+            <p class="eyebrow">Provider authorization</p>
+            <h2 id="authorization-title">Complete authentication</h2>
+            <p id="authorization-message"></p>
+          </div>
+          <div id="authorization-code-wrap" class="authorization-code-wrap hidden">
+            <span>Device code</span>
+            <strong id="authorization-code"></strong>
+          </div>
+          <div class="authorization-actions">
+            <button class="button ghost compact hidden" id="copy-authorization-code" type="button">Copy code</button>
+            <button class="button primary compact" id="open-authorization" type="button">Open authorization</button>
+          </div>
+        </aside>
+
         <section id="overview" aria-labelledby="session-title">
           <div class="section-heading">
             <div>

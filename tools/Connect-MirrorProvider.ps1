@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('GitHub', 'Cloudflare', 'Bitbucket')][string]$Provider,
     [AllowNull()][string]$BitbucketClientSecret,
+    [switch]$NoBrowser,
     [string]$AuthenticationConfigPath = 'config/authentication.json'
 )
 
@@ -13,9 +14,9 @@ Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Session.psm1') -Force
 $configuration = Get-MirrorAuthenticationConfiguration -ConfigPath $AuthenticationConfigPath
 
 switch ($Provider) {
-    'GitHub' { Connect-GitHubSession -Configuration $configuration }
-    'Cloudflare' { Connect-CloudflareSession -Configuration $configuration }
-    'Bitbucket' { Connect-BitbucketSession -Configuration $configuration -ClientSecret $BitbucketClientSecret }
+    'GitHub' { Connect-GitHubSession -Configuration $configuration -NoBrowser:$NoBrowser }
+    'Cloudflare' { Connect-CloudflareSession -Configuration $configuration -NoBrowser:$NoBrowser }
+    'Bitbucket' { Connect-BitbucketSession -Configuration $configuration -ClientSecret $BitbucketClientSecret -NoBrowser:$NoBrowser }
 }
 
 $BitbucketClientSecret = $null

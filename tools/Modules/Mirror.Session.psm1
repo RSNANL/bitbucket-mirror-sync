@@ -196,8 +196,27 @@ function Get-HttpFailureDetail {
     return $parts -join ': '
 }
 
+function Write-ManagerAuthorization {
+    param(
+        [Parameter(Mandatory)][string]$Provider,
+        [Parameter(Mandatory)][string]$AuthorizationUri,
+        [AllowNull()][string]$UserCode
+    )
+
+    $payload = [ordered]@{
+        provider = $Provider.ToLowerInvariant()
+        authorization_uri = $AuthorizationUri
+        user_code = if ([string]::IsNullOrWhiteSpace($UserCode)) { $null } else { $UserCode }
+    } | ConvertTo-Json -Compress
+    Write-Host "MIRROR_MANAGER_AUTHORIZATION:$payload"
+}
+
 function Open-ProviderAuthorization {
-    param([Parameter(Mandatory)][string]$Uri)
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [switch]$NoBrowser
+    )
+    if ($NoBrowser) { return }
     Write-Host 'Opening provider authorization in your browser...'
     Start-Process $Uri
 }
@@ -207,6 +226,7 @@ function Receive-LoopbackOAuthCode {
         [Parameter(Mandatory)][string]$RedirectUri,
         [Parameter(Mandatory)][string]$ExpectedState,
         [Parameter(Mandatory)][string]$AuthorizationUri,
+        [switch]$NoBrowser,
         [int]$TimeoutSeconds = 300
     )
 
@@ -220,7 +240,7 @@ function Receive-LoopbackOAuthCode {
 
     $listener.Start()
     try {
-        Open-ProviderAuthorization -Uri $AuthorizationUri
+        Open-ProviderAuthorization -Uri $AuthorizationUri -NoBrowser:$NoBrowser
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
         while (-not $listener.Pending()) {
             if ([DateTimeOffset]::UtcNow -ge $deadline) {
@@ -337,7 +357,10 @@ function Test-MirrorSession {
 }
 
 function Connect-GitHubSession {
-    param([Parameter(Mandatory)][object]$Configuration)
+    param(
+        [Parameter(Mandatory)][object]$Configuration,
+        [switch]$NoBrowser
+    )
 
     if (Test-PersistentGitHubCredential) {
         throw 'Persistent GitHub CLI authentication is present. Run `gh auth logout --hostname github.com` once, then start the mirror management session again.'
@@ -360,7 +383,10 @@ function Connect-GitHubSession {
 
     Write-Host "GitHub device code: $userCode"
     Write-Host "Authorize at: $verificationUri"
-    Open-ProviderAuthorization -Uri $verificationUri
+    if ($NoBrowser) {
+        Write-ManagerAuthorization -Provider 'GitHub' -AuthorizationUri $verificationUri -UserCode $userCode
+    }
+    Open-ProviderAuthorization -Uri $verificationUri -NoBrowser:$NoBrowser
 
     $interval = if ($null -eq $pollInterval) { 5 } else { [Math]::Max([int]$pollInterval, 5) }
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds([int]$expiresIn)
@@ -411,7 +437,10 @@ function Connect-GitHubSession {
 }
 
 function Connect-CloudflareSession {
-    param([Parameter(Mandatory)][object]$Configuration)
+    param(
+        [Parameter(Mandatory)][object]$Configuration,
+        [switch]$NoBrowser
+    )
 
     if ([Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN', 'Process')) {
         throw 'CLOUDFLARE_API_TOKEN is set in the current process. Remove it before starting an interactive mirror management session.'
@@ -431,7 +460,10 @@ function Connect-CloudflareSession {
         scope = $script:CloudflareOAuthScopes -join ' '
     }))
 
-    $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
+    if ($NoBrowser) {
+        Write-ManagerAuthorization -Provider 'Cloudflare' -AuthorizationUri $authorizationUri -UserCode $null
+    }
+    $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
     $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://dash.cloudflare.com/oauth2/token' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
         grant_type = 'authorization_code'
         client_id = $clientId
@@ -463,7 +495,8 @@ function Connect-CloudflareSession {
 function Connect-BitbucketSession {
     param(
         [Parameter(Mandatory)][object]$Configuration,
-        [AllowNull()][string]$ClientSecret
+        [AllowNull()][string]$ClientSecret,
+        [switch]$NoBrowser
     )
 
     if ([Environment]::GetEnvironmentVariable('BITBUCKET_API_TOKEN', 'Process')) {
@@ -485,7 +518,10 @@ function Connect-BitbucketSession {
             response_type = 'code'
             state = $state
         }))
-        $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
+        if ($NoBrowser) {
+            Write-ManagerAuthorization -Provider 'Bitbucket' -AuthorizationUri $authorizationUri -UserCode $null
+        }
+        $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
 
         $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${clientId}:$ClientSecret")
         $basic = [Convert]::ToBase64String($credentialBytes)
