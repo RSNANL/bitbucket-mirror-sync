@@ -16,6 +16,8 @@ const elements = {
   providers: document.querySelector('#providers'),
   mirrorList: document.querySelector('#mirror-list'),
   mirrorCount: document.querySelector('#mirror-count'),
+  statusChecked: document.querySelector('#status-checked'),
+  refreshStatus: document.querySelector('#refresh-status'),
   providerTemplate: document.querySelector('#provider-template'),
   mirrorTemplate: document.querySelector('#mirror-template'),
   operationState: document.querySelector('#operation-state'),
@@ -166,19 +168,78 @@ function flag(label, value) {
   return wrapper;
 }
 
+function formatDateTime(value, fallback = 'Unknown') {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return fallback;
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function statusLabel(check) {
+  if (!check) return 'Not checked';
+  if (check.conclusion) return check.conclusion[0].toUpperCase() + check.conclusion.slice(1);
+  if (check.status && check.status !== 'completed') return check.status.replaceAll('_', ' ');
+  return { healthy: 'Healthy', unhealthy: 'Issue detected', unknown: 'Unknown' }[check.state] || 'Unknown';
+}
+
+function statusDetail(kind, check) {
+  if (!check) return 'Connect providers and refresh live status.';
+  if (kind === 'bitbucket_repository' || kind === 'github_repository') {
+    return check.updated_at ? `Updated ${formatDateTime(check.updated_at)}` : check.reason;
+  }
+  if (kind === 'cloudflare_worker' && check.state === 'healthy') return `Binding ${check.secret_binding}`;
+  if (kind === 'github_actions' && check.run_number) {
+    return `Run #${check.run_number} · ${formatDateTime(check.updated_at || check.started_at)}`;
+  }
+  return check.reason;
+}
+
+function renderStatusItem(item, kind, check) {
+  const stateName = check?.state || 'unknown';
+  item.dataset.state = stateName;
+  item.title = check?.reason || 'Live status has not been checked.';
+  item.querySelector('strong').textContent = statusLabel(check);
+  item.querySelector('p').textContent = statusDetail(kind, check);
+  const link = item.querySelector('a');
+  link.classList.toggle('hidden', !check?.url);
+  if (check?.url) link.href = check.url;
+  else link.removeAttribute('href');
+}
+
+function getMirrorStatus(mirrorId) {
+  return state.snapshot.status?.mirrors?.find((item) => item.id === mirrorId) || null;
+}
+
+function renderStatusHeading() {
+  const status = state.snapshot.status;
+  if (!status?.checked_at) elements.statusChecked.textContent = 'Status not checked';
+  else elements.statusChecked.textContent = `${status.is_stale ? 'Status may be stale · ' : 'Checked '}${formatDateTime(status.checked_at)}`;
+  const refreshing = state.operation?.action === 'refresh-status' && state.operation?.status === 'running';
+  elements.refreshStatus.textContent = refreshing ? 'Refreshing…' : 'Refresh status';
+  elements.refreshStatus.disabled = !state.hostOnline || state.operation?.status === 'running';
+}
+
 function renderMirrors() {
   elements.mirrorList.replaceChildren();
   const mirrors = state.snapshot.mirrors;
+  renderStatusHeading();
   elements.mirrorCount.textContent = `${mirrors.length} mirror${mirrors.length === 1 ? '' : 's'}`;
   for (const mirror of mirrors) {
     const card = elements.mirrorTemplate.content.firstElementChild.cloneNode(true);
+    const liveStatus = getMirrorStatus(mirror.id);
     card.classList.toggle('disabled', !mirror.enabled);
+    card.dataset.state = liveStatus?.overall?.state || 'unknown';
+    card.title = liveStatus?.overall?.reason || 'Live status has not been checked.';
     card.querySelector('h3').textContent = mirror.id;
     card.querySelector('.pill').textContent = mirror.enabled ? 'Enabled' : 'Disabled';
     card.querySelector('.route').textContent = `${mirror.bitbucket_repository}  →  ${mirror.github_repository}`;
     const flags = card.querySelector('.mirror-flags');
     flags.append(flag('Recovery', mirror.scheduled_recovery ? 'Scheduled' : 'Manual'));
-    flags.append(flag('Target', 'GitHub'));
+    flags.append(flag('Last sync', formatDateTime(liveStatus?.last_successful_sync?.completed_at, 'No successful run')));
+    for (const item of card.querySelectorAll('.status-item')) {
+      const kind = item.dataset.statusKind;
+      renderStatusItem(item, kind, liveStatus?.[kind]);
+    }
     card.querySelector('.validate').addEventListener('click', () => runOperation('validate', { MirrorId: mirror.id }));
     card.querySelector('.dispatch').addEventListener('click', () => runOperation('dispatch', { MirrorId: mirror.id, Dispatch: true }));
     card.querySelector('.manage').addEventListener('click', () => openManageDialog(mirror));
@@ -279,7 +340,7 @@ async function runOperation(action, args = {}, isApply = false) {
       body: JSON.stringify({ action, arguments: args }),
     });
     renderOperation(operation);
-    document.querySelector('#activity').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (action !== 'refresh-status') document.querySelector('#activity').scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (!state.poller) state.poller = setInterval(pollOperation, 800);
   } catch (error) {
     if (!isApply) state.pendingPlan = null;
@@ -496,6 +557,7 @@ elements.dialog.addEventListener('click', (event) => {
 
 document.querySelector('#new-mirror').addEventListener('click', openNewMirrorDialog);
 document.querySelector('#deploy-worker').addEventListener('click', openWorkerDialog);
+elements.refreshStatus.addEventListener('click', () => runOperation('refresh-status'));
 elements.applyPlan.addEventListener('click', () => {
   if (!state.pendingPlan) return;
   const plan = state.pendingPlan;
@@ -521,12 +583,6 @@ elements.openAuthorization.addEventListener('click', () => {
   state.authPopup = openAuthenticationPopup();
   navigateAuthenticationPopup(state.authorization.authorization_uri);
 });
-
-for (const link of document.querySelectorAll('.nav-link')) {
-  link.addEventListener('click', () => {
-    for (const item of document.querySelectorAll('.nav-link')) item.classList.toggle('active', item === link);
-  });
-}
 
 async function initialize() {
   try {

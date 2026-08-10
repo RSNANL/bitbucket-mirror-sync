@@ -7,7 +7,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Manager.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Common.psm1')
+Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Status.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Common.psm1') -Force
 
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     throw "PowerShell 7 or newer is required; current version is $($PSVersionTable.PSVersion)."
@@ -24,6 +25,9 @@ $csrfToken = New-RandomSecret -ByteLength 32
 $runtimeId = [Guid]::NewGuid().ToString('N')
 $operation = $null
 $lastClientHeartbeat = $null
+$statusSnapshot = $null
+$statusIsStale = $true
+$syncValidationEvidence = @{}
 
 function Send-ManagerResponse {
     param(
@@ -162,13 +166,40 @@ function Get-ManagerOperationState {
 
     if ($operation.Status -eq 'running' -and $operation.Async.IsCompleted) {
         try {
-            $result = @($operation.PowerShell.EndInvoke($operation.Async) | ForEach-Object { [string]$_ })
+            $result = @($operation.PowerShell.EndInvoke($operation.Async))
             Receive-ManagerOperationStreams -ManagerOperation $operation
-            $operation.Output = @($operation.Output) + $result
             if ($operation.PowerShell.HadErrors -or $operation.Errors.Count -gt 0) {
                 $operation.Status = 'failed'
                 $operation.Error = $operation.Errors -join "`n"
             } else {
+                if ($operation.Action -eq 'refresh-status') {
+                    if ($result.Count -ne 1) { throw 'Mirror status refresh did not return exactly one status snapshot.' }
+                    $script:statusSnapshot = Merge-MirrorSyncValidationEvidence `
+                        -Snapshot $result[0] `
+                        -Evidence $syncValidationEvidence
+                    $script:statusIsStale = $false
+                    $operation.Output = @($operation.Output) + 'Live mirror status refreshed.'
+                } else {
+                    $operation.Output = @($operation.Output) + @($result | ForEach-Object { [string]$_ })
+                    if ($operation.Action -eq 'validate-sync') {
+                        $validatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+                        $script:syncValidationEvidence[$operation.MirrorId] = [pscustomobject]@{
+                            completed_at = $validatedAt
+                        }
+                        if ($null -ne $statusSnapshot) {
+                            $script:statusSnapshot = Merge-MirrorSyncValidationEvidence `
+                                -Snapshot $statusSnapshot `
+                                -Evidence $syncValidationEvidence
+                        }
+                    }
+                    if ($operation.Action -in @(
+                        'connect-provider', 'disconnect-session', 'dispatch', 'validate-sync',
+                        'new-mirror', 'remove-mirror', 'repair-mirror', 'rotate-keys',
+                        'deploy-worker', 'set-mirror'
+                    )) {
+                        $script:statusIsStale = $true
+                    }
+                }
                 $operation.Status = 'succeeded'
             }
         }
@@ -245,6 +276,7 @@ function Start-ManagerOperation {
         AuthorizationEvents = $authorizationEvents
         AuthorizationEventKey = $authorizationEventKey
         AuthorizationDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+        MirrorId = if ($Arguments.Contains('MirrorId')) { [string]$Arguments['MirrorId'] } else { $null }
     }
     return Get-ManagerOperationState
 }
@@ -301,7 +333,7 @@ try {
                 Send-ManagerJson -Context $context -StatusCode 200 -Value @{ request_token = $csrfToken; runtime_id = $runtimeId }
             }
             elseif ($request.HttpMethod -eq 'GET' -and $path -eq '/api/snapshot') {
-                Send-ManagerJson -Context $context -StatusCode 200 -Value (Get-MirrorManagerSnapshot)
+                Send-ManagerJson -Context $context -StatusCode 200 -Value (Get-MirrorManagerSnapshot -StatusSnapshot $statusSnapshot -StatusIsStale $statusIsStale)
             }
             elseif ($request.HttpMethod -eq 'GET' -and $path -eq '/api/operation') {
                 Send-ManagerJson -Context $context -StatusCode 200 -Value (Get-ManagerOperationState)

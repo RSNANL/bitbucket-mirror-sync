@@ -190,6 +190,30 @@ function Test-CloudflareWorkerDeployment {
     return $null -ne $response
 }
 
+function Get-CloudflareWorkerReadiness {
+    param(
+        [string[]]$RequiredSecretNames = @('GITHUB_APP_PRIVATE_KEY'),
+        [string]$WorkerConfig = 'worker/wrangler.jsonc'
+    )
+
+    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
+    $deployed = Test-CloudflareWorkerDeployment -WorkerConfig $WorkerConfig
+    $secretNames = if ($deployed) {
+        @(Get-CloudflareWorkerSecrets -WorkerConfig $WorkerConfig | ForEach-Object { [string]$_.name })
+    } else {
+        @()
+    }
+    $missingSecretNames = @($RequiredSecretNames | Where-Object { $_ -notin $secretNames })
+
+    return [pscustomobject]@{
+        worker_name = $workerName
+        deployed = $deployed
+        secret_names = @($secretNames)
+        missing_secret_names = @($missingSecretNames)
+        ready = $deployed -and $missingSecretNames.Count -eq 0
+    }
+}
+
 function Get-CloudflareWorkerBaseUrl {
     param([string]$WorkerConfig = 'worker/wrangler.jsonc')
 
@@ -209,15 +233,12 @@ function Assert-CloudflareWorkerReady {
         [string]$WorkerConfig = 'worker/wrangler.jsonc'
     )
 
-    $workerName = Get-CloudflareWorkerName -WorkerConfig $WorkerConfig
-    if (-not (Test-CloudflareWorkerDeployment -WorkerConfig $WorkerConfig)) {
-        throw "Cloudflare Worker is not deployed: $workerName. Run .\tools\Deploy-MirrorWorker.ps1 before provisioning a mirror."
+    $readiness = Get-CloudflareWorkerReadiness -RequiredSecretNames $RequiredSecretNames -WorkerConfig $WorkerConfig
+    if (-not $readiness.deployed) {
+        throw "Cloudflare Worker is not deployed: $($readiness.worker_name). Run .\tools\Deploy-MirrorWorker.ps1 before provisioning a mirror."
     }
-    $secretNames = @(Get-CloudflareWorkerSecrets -WorkerConfig $WorkerConfig | ForEach-Object { [string]$_.name })
-    foreach ($secretName in $RequiredSecretNames) {
-        if ($secretName -notin $secretNames) {
-            throw "Cloudflare Worker is missing required secret binding: $secretName"
-        }
+    if ($readiness.missing_secret_names.Count -gt 0) {
+        throw "Cloudflare Worker is missing required secret binding: $($readiness.missing_secret_names -join ', ')"
     }
     return $true
 }
@@ -345,4 +366,4 @@ function Remove-CloudflareWorkerSecret {
     [void](Invoke-CloudflareApi -Method DELETE -Path "accounts/$($credentials.AccountId)/workers/scripts/$workerName/secrets/$encodedSecretName" -AllowMissing)
 }
 
-Export-ModuleMember -Function Get-CloudflareCredentials, Get-CloudflareWorkerName, Get-CloudflareWorkerBaseUrl, Invoke-CloudflareApi, Test-CloudflareAuthentication, Get-CloudflareWorkerSecrets, Test-CloudflareWorkerDeployment, Assert-CloudflareWorkerReady, Test-CloudflareWorkerGitHubAppAuthentication, Publish-CloudflareWorker, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret
+Export-ModuleMember -Function Get-CloudflareCredentials, Get-CloudflareWorkerName, Get-CloudflareWorkerBaseUrl, Invoke-CloudflareApi, Test-CloudflareAuthentication, Get-CloudflareWorkerSecrets, Test-CloudflareWorkerDeployment, Get-CloudflareWorkerReadiness, Assert-CloudflareWorkerReady, Test-CloudflareWorkerGitHubAppAuthentication, Publish-CloudflareWorker, Set-CloudflareWorkerSecret, Remove-CloudflareWorkerSecret

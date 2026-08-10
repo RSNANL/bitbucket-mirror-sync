@@ -9,10 +9,13 @@ const session = await readFile(new URL('../tools/Modules/Mirror.Session.psm1', i
 const managerHtml = await readFile(new URL('../manager/web/index.html', import.meta.url), 'utf8');
 const managerApp = await readFile(new URL('../manager/web/app.js', import.meta.url), 'utf8');
 const managerDocs = await readFile(new URL('../docs/mirror-manager.md', import.meta.url), 'utf8');
+const statusModule = await readFile(new URL('../tools/Modules/Mirror.Status.psm1', import.meta.url), 'utf8');
+const bitbucketModule = await readFile(new URL('../tools/Modules/Mirror.Bitbucket.psm1', import.meta.url), 'utf8');
+const mirrorWorkflow = await readFile(new URL('../.github/workflows/mirror.yml', import.meta.url), 'utf8');
 
 test('manager exposes every existing management action through an allowlist', () => {
   for (const action of [
-    'validate', 'dispatch', 'validate-sync', 'new-mirror', 'remove-mirror',
+    'refresh-status', 'validate', 'dispatch', 'validate-sync', 'new-mirror', 'remove-mirror',
     'repair-mirror', 'rotate-keys', 'deploy-worker', 'set-mirror',
   ]) {
     assert.match(managerModule, new RegExp(`'${action}'\\s*=`));
@@ -55,7 +58,7 @@ test('configuration mutations preserve plan/apply behavior', () => {
 });
 
 test('web app exposes provider, mirror, operation, and activity surfaces', () => {
-  for (const id of ['providers', 'mirror-list', 'activity', 'action-dialog']) {
+  for (const id of ['providers', 'mirror-list', 'refresh-status', 'status-checked', 'activity', 'action-dialog']) {
     assert.match(managerHtml, new RegExp(`id="${id}"`));
   }
   for (const action of ['validate-sync', 'new-mirror', 'remove-mirror', 'repair-mirror', 'rotate-keys', 'deploy-worker', 'set-mirror']) {
@@ -73,6 +76,27 @@ test('web app exposes provider, mirror, operation, and activity surfaces', () =>
   assert.match(managerApp, /\/api\/operation\/cancel/);
   assert.match(managerHtml, /id="cancel-operation"/);
   assert.match(managerDocs, /only authoritative non-secret registry/);
+  assert.doesNotMatch(managerHtml, /class="sidebar"|class="nav-link"/);
+  assert.doesNotMatch(managerApp, /querySelectorAll\('\.nav-link'\)/);
+});
+
+test('per-mirror live status has a normalized contract and deterministic workflow identity', () => {
+  assert.match(statusModule, /ValidateSet\('healthy', 'unhealthy', 'unknown'\)/);
+  assert.match(statusModule, /function Resolve-MirrorOverallStatus/);
+  for (const property of [
+    'bitbucket_repository', 'bitbucket_webhook', 'cloudflare_worker',
+    'github_repository', 'github_actions', 'last_successful_sync',
+  ]) {
+    assert.match(statusModule, new RegExp(`${property}\\s*=`));
+  }
+  assert.match(mirrorWorkflow, /run-name:\s*Mirror \$\{\{ inputs\.mirror_id \}\}/);
+  assert.match(managerApp, /runOperation\('refresh-status'\)/);
+  assert.match(managerApp, /dataset\.statusKind/);
+  assert.match(managerHtml, /data-status-kind="github_actions"/);
+  assert.match(managerDocs, /healthy`, `unhealthy` or `unknown`/);
+  assert.match(statusModule, /function Merge-MirrorSyncValidationEvidence/);
+  assert.match(statusModule, /evidence = 'full_sync_validation'/);
+  assert.match(bitbucketModule, /commits\/\$\{encodedRevision\}\?pagelen=1/);
 });
 
 test('dialogs can be dismissed without satisfying required fields', () => {

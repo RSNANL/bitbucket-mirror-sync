@@ -154,4 +154,18 @@ function Start-GitHubMirrorWorkflow {
     ))
 }
 
-Export-ModuleMember -Function Test-GitHubAuthentication, Invoke-GitHubApi, Get-GitHubRepository, New-GitHubMirrorRepository, Remove-GitHubRepository, Get-GitHubDeployKeys, New-GitHubDeployKey, Remove-GitHubDeployKey, New-GitHubEnvironment, Remove-GitHubEnvironment, Set-GitHubEnvironmentSecret, Get-GitHubEnvironmentSecrets, Start-GitHubMirrorWorkflow
+function Get-GitHubMirrorWorkflowRuns {
+    param(
+        [Parameter(Mandatory)][string]$InfrastructureRepository,
+        [Parameter(Mandatory)][string]$WorkflowFile,
+        [ValidateRange(1, 100)][int]$PerPage = 100
+    )
+
+    $encodedWorkflow = [Uri]::EscapeDataString($WorkflowFile)
+    $response = Invoke-GitHubApi `
+        -Method GET `
+        -Endpoint "repos/$InfrastructureRepository/actions/workflows/$encodedWorkflow/runs?event=workflow_dispatch&per_page=$PerPage"
+    return @($response.workflow_runs)
+}
+
+Export-ModuleMember -Function Test-GitHubAuthentication, Invoke-GitHubApi, Get-GitHubRepository, New-GitHubMirrorRepository, Remove-GitHubRepository, Get-GitHubDeployKeys, New-GitHubDeployKey, Remove-GitHubDeployKey, New-GitHubEnvironment, Remove-GitHubEnvironment, Set-GitHubEnvironmentSecret, Get-GitHubEnvironmentSecrets, Start-GitHubMirrorWorkflow, Get-GitHubMirrorWorkflowRuns

@@ -9,6 +9,7 @@ function Get-MirrorManagerOperationDefinition {
     $definitions = @{
         'connect-provider' = @{ Script = 'Connect-MirrorProvider.ps1'; Required = @('Provider'); Switches = @(); Optional = @('BitbucketClientSecret') }
         'disconnect-session' = @{ Script = 'Disconnect-MirrorSession.ps1'; Required = @(); Switches = @(); Optional = @() }
+        'refresh-status' = @{ Script = 'Get-MirrorStatus.ps1'; Required = @(); Switches = @(); Optional = @() }
         'validate' = @{ Script = 'Test-Mirror.ps1'; Required = @('MirrorId'); Switches = @(); Optional = @() }
         'dispatch' = @{ Script = 'Test-Mirror.ps1'; Required = @('MirrorId'); Switches = @('Dispatch'); Optional = @() }
         'validate-sync' = @{ Script = 'Test-Mirror.ps1'; Required = @('MirrorId', 'SourceRepositoryPath'); Switches = @('ValidateSync'); Optional = @('SyncTimeoutSeconds') }
@@ -78,7 +79,11 @@ function Get-MirrorManagerInvocation {
 }
 
 function Get-MirrorManagerSnapshot {
-    param([string]$ConfigPath = 'config/mirrors.json')
+    param(
+        [string]$ConfigPath = 'config/mirrors.json',
+        [AllowNull()][object]$StatusSnapshot = $null,
+        [bool]$StatusIsStale = $true
+    )
 
     $config = Get-MirrorConfiguration -ConfigPath $ConfigPath
     $providers = foreach ($provider in @('GitHub', 'Cloudflare', 'Bitbucket')) {
@@ -97,6 +102,11 @@ function Get-MirrorManagerSnapshot {
         dispatch = $config.dispatch
         mirrors = @($config.mirrors)
         providers = @($providers)
+        status = [pscustomobject]@{
+            checked_at = if ($null -eq $StatusSnapshot) { $null } else { $StatusSnapshot.checked_at }
+            is_stale = $StatusIsStale
+            mirrors = if ($null -eq $StatusSnapshot) { @() } else { @($StatusSnapshot.mirrors) }
+        }
     }
 }
 
