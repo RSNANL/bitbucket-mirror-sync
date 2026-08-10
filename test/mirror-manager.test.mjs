@@ -80,6 +80,18 @@ test('web app exposes provider, mirror, operation, and activity surfaces', () =>
   assert.doesNotMatch(managerApp, /querySelectorAll\('\.nav-link'\)/);
 });
 
+test('provider sessions reconnect independently and GitHub device flow is code-first', () => {
+  assert.match(managerModule, /authenticated = \$hasToken -and -not \$isExpired/);
+  assert.match(managerModule, /expired = \$hasToken -and \$isExpired/);
+  assert.match(managerApp, /provider\.expired\s*\? 'Session expired'/);
+  assert.match(managerApp, /provider\.authenticated \? 'Connected' : provider\.expired \? 'Reconnect' : 'Connect'/);
+  assert.match(managerApp, /if \(provider !== 'github'\) state\.authPopup = openAuthenticationPopup\(\);/);
+  assert.match(managerApp, /operation\.authorization && operation\.authorization\.provider !== 'github'/);
+  assert.match(managerApp, /!\['refresh-status', 'connect-provider'\]\.includes\(action\)/);
+  assert.match(managerApp, /Copy this code, then open GitHub authorization when you are ready/);
+  assert.match(managerDocs, /re-authenticate that provider without disconnecting the other active provider sessions/);
+});
+
 test('per-mirror live status has a normalized contract and deterministic workflow identity', () => {
   assert.match(statusModule, /ValidateSet\('healthy', 'unhealthy', 'unknown'\)/);
   assert.match(statusModule, /function Resolve-MirrorOverallStatus/);

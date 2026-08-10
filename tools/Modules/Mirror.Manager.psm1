@@ -89,10 +89,23 @@ function Get-MirrorManagerSnapshot {
     $providers = foreach ($provider in @('GitHub', 'Cloudflare', 'Bitbucket')) {
         $tokenName = "MIRROR_SESSION_$($provider.ToUpperInvariant())_TOKEN"
         $expiryName = "MIRROR_SESSION_$($provider.ToUpperInvariant())_EXPIRES_AT"
+        $tokenValue = [Environment]::GetEnvironmentVariable($tokenName, 'Process')
         $expiryValue = [Environment]::GetEnvironmentVariable($expiryName, 'Process')
+        $hasToken = -not [string]::IsNullOrWhiteSpace($tokenValue)
+        $isExpired = $false
+        if ($hasToken -and $expiryValue) {
+            try {
+                $isExpired = [DateTimeOffset]::Parse($expiryValue) -le [DateTimeOffset]::UtcNow
+            }
+            catch {
+                $isExpired = $true
+            }
+        }
+
         [pscustomobject]@{
             id = $provider.ToLowerInvariant()
-            authenticated = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($tokenName, 'Process'))
+            authenticated = $hasToken -and -not $isExpired
+            expired = $hasToken -and $isExpired
             expires_at = if ($expiryValue) { $expiryValue } else { $null }
         }
     }

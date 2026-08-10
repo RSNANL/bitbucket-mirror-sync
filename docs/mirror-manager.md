@@ -26,7 +26,11 @@ Stop the host with `Ctrl+C`. The listener uses an interruptible wait, stops an a
 
 An active operation can be cancelled with **Stop operation**. Cancellation stops the operation runspace and clears transient authorization state without discarding provider sessions that were already established.
 
-GitHub uses Device Flow. Mirror Manager opens the authorization page in a compact popup and shows the device code with a copy action in the main interface. Cloudflare and Bitbucket use fixed loopback callbacks on ports `53682` and `53683`. Because every provider window is opened by the interface, it closes automatically after successful authentication. When the browser blocks the initial popup, use **Open authorization** in the visible authorization panel.
+Provider sessions are evaluated independently. When one provider token expires or has an invalid expiry value, that provider is shown as **Session expired** with a **Reconnect** action. Reconnecting replaces only that provider session, so you can re-authenticate that provider without disconnecting the other active provider sessions. **Disconnect all providers** remains the explicit full-session reset.
+
+GitHub uses Device Flow. Starting GitHub authorization first requests and displays the device code in the main interface; it does not open a provider window automatically. Copy the code and use **Open authorization** when you are ready to continue in GitHub. The Manager closes that popup when Device Flow completes. Cloudflare and Bitbucket use fixed loopback callbacks on ports `53682` and `53683`; their authorization windows are reserved immediately from the user action so browser popup blocking does not prevent the callback flow. If a popup cannot be opened, use **Open authorization** in the visible authorization panel.
+
+Starting provider authentication keeps the current page position so the authorization panel that appears near **Provider access** remains usable. Activity still records the operation, but authentication does not automatically scroll the page away from the device code or authorization controls.
 
 ## Available operations
 

@@ -97,6 +97,38 @@ foreach ($commandName in @('Get-RepositoryRoot', 'New-RandomSecret', 'Get-Mirror
     }
 }
 
+$githubTokenVariable = 'MIRROR_SESSION_GITHUB_TOKEN'
+$githubExpiryVariable = 'MIRROR_SESSION_GITHUB_EXPIRES_AT'
+$originalGitHubToken = [Environment]::GetEnvironmentVariable($githubTokenVariable, 'Process')
+$originalGitHubExpiry = [Environment]::GetEnvironmentVariable($githubExpiryVariable, 'Process')
+try {
+    [Environment]::SetEnvironmentVariable($githubTokenVariable, 'test-token', 'Process')
+    [Environment]::SetEnvironmentVariable($githubExpiryVariable, [DateTimeOffset]::UtcNow.AddMinutes(-1).ToString('o'), 'Process')
+    $expiredSessionSnapshot = Get-MirrorManagerSnapshot
+    $expiredGitHub = @($expiredSessionSnapshot.providers | Where-Object { $_.id -eq 'github' })[0]
+    if ($expiredGitHub.authenticated -or -not $expiredGitHub.expired) {
+        throw 'Mirror Manager did not expose an expired provider session as reconnectable.'
+    }
+
+    [Environment]::SetEnvironmentVariable($githubExpiryVariable, [DateTimeOffset]::UtcNow.AddMinutes(30).ToString('o'), 'Process')
+    $activeSessionSnapshot = Get-MirrorManagerSnapshot
+    $activeGitHub = @($activeSessionSnapshot.providers | Where-Object { $_.id -eq 'github' })[0]
+    if (-not $activeGitHub.authenticated -or $activeGitHub.expired) {
+        throw 'Mirror Manager did not expose a valid provider session as authenticated.'
+    }
+
+    [Environment]::SetEnvironmentVariable($githubExpiryVariable, 'invalid-expiry', 'Process')
+    $invalidSessionSnapshot = Get-MirrorManagerSnapshot
+    $invalidGitHub = @($invalidSessionSnapshot.providers | Where-Object { $_.id -eq 'github' })[0]
+    if ($invalidGitHub.authenticated -or -not $invalidGitHub.expired) {
+        throw 'Mirror Manager did not reject an invalid provider expiry value.'
+    }
+}
+finally {
+    [Environment]::SetEnvironmentVariable($githubTokenVariable, $originalGitHubToken, 'Process')
+    [Environment]::SetEnvironmentVariable($githubExpiryVariable, $originalGitHubExpiry, 'Process')
+}
+
 Import-Module (Join-Path $RepositoryRoot 'tools/Modules/Mirror.Status.psm1') -Force
 $checkedAt = [DateTimeOffset]::UtcNow.ToString('o')
 $healthyCheck = New-MirrorStatusCheck -State 'healthy' -Reason 'Ready.' -CheckedAt $checkedAt
