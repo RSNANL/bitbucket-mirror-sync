@@ -1,0 +1,23 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][ValidateSet('GitHub', 'Cloudflare', 'Bitbucket')][string]$Provider,
+    [AllowNull()][string]$BitbucketClientSecret,
+    [switch]$NoBrowser,
+    [AllowNull()][string]$AuthorizationEventKey,
+    [string]$AuthenticationConfigPath = 'config/authentication.json'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'Modules/Mirror.Session.psm1') -Force
+
+[void](Test-MirrorAuthenticationConfiguration -ConfigPath $AuthenticationConfigPath -RequireConfigured)
+$configuration = Get-MirrorAuthenticationConfiguration -ConfigPath $AuthenticationConfigPath
+
+switch ($Provider) {
+    'GitHub' { Connect-GitHubSession -Configuration $configuration -NoBrowser:$NoBrowser -AuthorizationEventKey $AuthorizationEventKey }
+    'Cloudflare' { Connect-CloudflareSession -Configuration $configuration -NoBrowser:$NoBrowser -AuthorizationEventKey $AuthorizationEventKey }
+    'Bitbucket' { Connect-BitbucketSession -Configuration $configuration -ClientSecret $BitbucketClientSecret -NoBrowser:$NoBrowser -AuthorizationEventKey $AuthorizationEventKey }
+}
+
+$BitbucketClientSecret = $null

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Mirror Manager</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Infrastructure control plane</p>
+            <h1>Mirror overview</h1>
+          </div>
+          <div class="header-actions">
+            <button class="button ghost" id="deploy-worker" type="button">Deploy Worker</button>
+            <button class="button primary" id="new-mirror" type="button">New mirror</button>
+          </div>
+        </header>
+
+        <div id="notice" class="notice hidden" role="status"></div>
+
+        <aside id="authorization" class="authorization hidden" aria-live="polite">
+          <div>
+            <p class="eyebrow">Provider authorization</p>
+            <h2 id="authorization-title">Complete authentication</h2>
+            <p id="authorization-message"></p>
+          </div>
+          <div id="authorization-code-wrap" class="authorization-code-wrap hidden">
+            <span>Device code</span>
+            <strong id="authorization-code"></strong>
+          </div>
+          <div class="authorization-actions">
+            <button class="button ghost compact hidden" id="copy-authorization-code" type="button">Copy code</button>
+            <button class="button primary compact" id="open-authorization" type="button">Open authorization</button>
+          </div>
+        </aside>
+
+        <section id="overview" aria-labelledby="session-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Management session</p>
+              <h2 id="session-title">Provider access</h2>
+            </div>
+            <button class="text-button" id="disconnect" type="button">Disconnect all</button>
+          </div>
+          <div class="provider-grid" id="providers" aria-live="polite"></div>
+        </section>
+
+        <section id="mirrors" aria-labelledby="mirrors-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Configured infrastructure</p>
+              <h2 id="mirrors-title">Mirrors</h2>
+            </div>
+            <div class="mirror-heading-actions">
+              <span class="status-checked" id="status-checked">Status not checked</span>
+              <span class="count" id="mirror-count">0 mirrors</span>
+              <button class="button ghost compact" id="refresh-status" type="button">Refresh status</button>
+            </div>
+          </div>
+          <div class="mirror-list" id="mirror-list" aria-live="polite"></div>
+        </section>
+
+        <section id="activity" aria-labelledby="activity-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Current operation</p>
+              <h2 id="activity-title">Activity</h2>
+            </div>
+            <div class="activity-actions">
+              <button class="button ghost compact hidden" id="cancel-operation" type="button">Stop operation</button>
+              <button class="button primary compact hidden" id="apply-plan" type="button">Apply reviewed plan</button>
+              <span class="operation-state idle" id="operation-state">Idle</span>
+            </div>
+          </div>
+          <div class="terminal" aria-live="polite">
+            <div class="terminal-bar"><span></span><span></span><span></span><strong id="operation-name">No operation running</strong></div>
+            <pre id="operation-log">Select an action to inspect or manage a mirror.</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="action-dialog">
+      <form method="dialog" id="action-form">
+        <div class="dialog-heading">
+          <div><p class="eyebrow" id="dialog-eyebrow">Mirror operation</p><h2 id="dialog-title">Action</h2></div>
+          <button class="icon-button" data-dialog-dismiss aria-label="Close dialog" type="button">×</button>
+        </div>
+        <div id="dialog-fields" class="form-grid"></div>
+        <p class="dialog-note" id="dialog-note"></p>
+        <div class="dialog-actions">
+          <button class="button ghost" data-dialog-dismiss type="button">Cancel</button>
+          <button class="button primary" id="dialog-submit" value="default" type="submit">Continue</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="provider-template">
+      <article class="provider-card">
+        <div class="provider-icon" aria-hidden="true"></div>
+        <div><h3></h3><p></p></div>
+        <button class="button compact" type="button"></button>
+      </article>
+    </template>
+
+    <template id="mirror-template">
+      <article class="mirror-card">
+        <div class="mirror-main">
+          <div class="mirror-status" aria-hidden="true"></div>
+          <div class="mirror-copy"><div class="mirror-title-row"><h3></h3><span class="pill"></span></div><p class="route"></p></div>
+        </div>
+        <div class="mirror-flags"></div>
+        <div class="mirror-actions">
+          <button class="button ghost compact validate" type="button">Validate</button>
+          <button class="button ghost compact dispatch" type="button">Dispatch</button>
+          <button class="button compact manage" type="button">Manage</button>
+        </div>
+        <div class="mirror-status-grid">
+          <div class="status-item" data-status-kind="bitbucket_repository"><span class="status-dot" aria-hidden="true"></span><div><small>Bitbucket source</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open</a></div></div>
+          <div class="status-item" data-status-kind="bitbucket_webhook"><span class="status-dot" aria-hidden="true"></span><div><small>Bitbucket webhook</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open</a></div></div>
+          <div class="status-item" data-status-kind="cloudflare_worker"><span class="status-dot" aria-hidden="true"></span><div><small>Cloudflare Worker</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open route</a></div></div>
+          <div class="status-item" data-status-kind="github_repository"><span class="status-dot" aria-hidden="true"></span><div><small>GitHub target</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open</a></div></div>
+          <div class="status-item" data-status-kind="github_actions"><span class="status-dot" aria-hidden="true"></span><div><small>GitHub Actions</small><strong></strong><p></p><a class="hidden" target="_blank" rel="noopener noreferrer">Open run</a></div></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 name: Mirror configured repository
+run-name: Mirror ${{ inputs.mirror_id }}
 
 on:
   workflow_dispatch:

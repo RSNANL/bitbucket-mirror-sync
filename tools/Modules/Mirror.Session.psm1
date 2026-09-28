@@ -196,8 +196,32 @@ function Get-HttpFailureDetail {
     return $parts -join ': '
 }
 
+function Write-ManagerAuthorization {
+    param(
+        [Parameter(Mandatory)][string]$Provider,
+        [Parameter(Mandatory)][string]$AuthorizationUri,
+        [AllowNull()][string]$UserCode,
+        [Parameter(Mandatory)][string]$AuthorizationEventKey
+    )
+
+    $authorizationEvents = [AppDomain]::CurrentDomain.GetData($AuthorizationEventKey)
+    if ($authorizationEvents -isnot [Collections.Concurrent.ConcurrentQueue[object]]) {
+        throw 'Mirror Manager authorization event channel is unavailable.'
+    }
+
+    $authorizationEvents.Enqueue([pscustomobject][ordered]@{
+        provider = $Provider.ToLowerInvariant()
+        authorization_uri = $AuthorizationUri
+        user_code = if ([string]::IsNullOrWhiteSpace($UserCode)) { $null } else { $UserCode }
+    })
+}
+
 function Open-ProviderAuthorization {
-    param([Parameter(Mandatory)][string]$Uri)
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [switch]$NoBrowser
+    )
+    if ($NoBrowser) { return }
     Write-Host 'Opening provider authorization in your browser...'
     Start-Process $Uri
 }
@@ -207,6 +231,7 @@ function Receive-LoopbackOAuthCode {
         [Parameter(Mandatory)][string]$RedirectUri,
         [Parameter(Mandatory)][string]$ExpectedState,
         [Parameter(Mandatory)][string]$AuthorizationUri,
+        [switch]$NoBrowser,
         [int]$TimeoutSeconds = 300
     )
 
@@ -220,7 +245,7 @@ function Receive-LoopbackOAuthCode {
 
     $listener.Start()
     try {
-        Open-ProviderAuthorization -Uri $AuthorizationUri
+        Open-ProviderAuthorization -Uri $AuthorizationUri -NoBrowser:$NoBrowser
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
         while (-not $listener.Pending()) {
             if ([DateTimeOffset]::UtcNow -ge $deadline) {
@@ -263,9 +288,9 @@ function Receive-LoopbackOAuthCode {
         }
 
         $html = if ($errorMessage) {
-            '<!doctype html><html><body><h2>Authorization failed</h2><p>You can return to PowerShell.</p></body></html>'
+            '<!doctype html><html><body><h2>Authorization failed</h2><p>This window can be closed.</p></body></html>'
         } else {
-            '<!doctype html><html><body><h2>Authorization complete</h2><p>You can return to PowerShell.</p></body></html>'
+            '<!doctype html><html><body><h2>Authorization complete</h2><p>This window closes automatically.</p><script>window.close()</script></body></html>'
         }
         $body = [Text.Encoding]::UTF8.GetBytes($html)
         $headers = "HTTP/1.1 200 OK`r`nContent-Type: text/html; charset=utf-8`r`nContent-Length: $($body.Length)`r`nConnection: close`r`n`r`n"
@@ -337,7 +362,11 @@ function Test-MirrorSession {
 }
 
 function Connect-GitHubSession {
-    param([Parameter(Mandatory)][object]$Configuration)
+    param(
+        [Parameter(Mandatory)][object]$Configuration,
+        [switch]$NoBrowser,
+        [AllowNull()][string]$AuthorizationEventKey
+    )
 
     if (Test-PersistentGitHubCredential) {
         throw 'Persistent GitHub CLI authentication is present. Run `gh auth logout --hostname github.com` once, then start the mirror management session again.'
@@ -360,7 +389,11 @@ function Connect-GitHubSession {
 
     Write-Host "GitHub device code: $userCode"
     Write-Host "Authorize at: $verificationUri"
-    Open-ProviderAuthorization -Uri $verificationUri
+    if ($NoBrowser) {
+        if ([string]::IsNullOrWhiteSpace($AuthorizationEventKey)) { throw 'Mirror Manager authorization event channel is required in no-browser mode.' }
+        Write-ManagerAuthorization -Provider 'GitHub' -AuthorizationUri $verificationUri -UserCode $userCode -AuthorizationEventKey $AuthorizationEventKey
+    }
+    Open-ProviderAuthorization -Uri $verificationUri -NoBrowser:$NoBrowser
 
     $interval = if ($null -eq $pollInterval) { 5 } else { [Math]::Max([int]$pollInterval, 5) }
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds([int]$expiresIn)
@@ -411,7 +444,11 @@ function Connect-GitHubSession {
 }
 
 function Connect-CloudflareSession {
-    param([Parameter(Mandatory)][object]$Configuration)
+    param(
+        [Parameter(Mandatory)][object]$Configuration,
+        [switch]$NoBrowser,
+        [AllowNull()][string]$AuthorizationEventKey
+    )
 
     if ([Environment]::GetEnvironmentVariable('CLOUDFLARE_API_TOKEN', 'Process')) {
         throw 'CLOUDFLARE_API_TOKEN is set in the current process. Remove it before starting an interactive mirror management session.'
@@ -431,7 +468,11 @@ function Connect-CloudflareSession {
         scope = $script:CloudflareOAuthScopes -join ' '
     }))
 
-    $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
+    if ($NoBrowser) {
+        if ([string]::IsNullOrWhiteSpace($AuthorizationEventKey)) { throw 'Mirror Manager authorization event channel is required in no-browser mode.' }
+        Write-ManagerAuthorization -Provider 'Cloudflare' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEventKey $AuthorizationEventKey
+    }
+    $code = Receive-LoopbackOAuthCode -RedirectUri $script:CloudflareRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
     $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://dash.cloudflare.com/oauth2/token' -Headers @{ Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
         grant_type = 'authorization_code'
         client_id = $clientId
@@ -461,17 +502,24 @@ function Connect-CloudflareSession {
 }
 
 function Connect-BitbucketSession {
-    param([Parameter(Mandatory)][object]$Configuration)
+    param(
+        [Parameter(Mandatory)][object]$Configuration,
+        [AllowNull()][string]$ClientSecret,
+        [switch]$NoBrowser,
+        [AllowNull()][string]$AuthorizationEventKey
+    )
 
     if ([Environment]::GetEnvironmentVariable('BITBUCKET_API_TOKEN', 'Process')) {
         throw 'BITBUCKET_API_TOKEN is set in the current process. Remove it before starting an interactive mirror management session.'
     }
 
     $clientId = [string]$Configuration.bitbucket.client_id
-    $secureSecret = Read-Host -Prompt 'Bitbucket OAuth consumer secret (used only in this process)' -AsSecureString
-    $clientSecret = ConvertFrom-SecureStringPlainText -SecureString $secureSecret
-    $secureSecret = $null
-    if ([string]::IsNullOrWhiteSpace($clientSecret)) { throw 'Bitbucket OAuth consumer secret is required.' }
+    if ([string]::IsNullOrWhiteSpace($ClientSecret)) {
+        $secureSecret = Read-Host -Prompt 'Bitbucket OAuth consumer secret (used only in this process)' -AsSecureString
+        $ClientSecret = ConvertFrom-SecureStringPlainText -SecureString $secureSecret
+        $secureSecret = $null
+    }
+    if ([string]::IsNullOrWhiteSpace($ClientSecret)) { throw 'Bitbucket OAuth consumer secret is required.' }
 
     try {
         $state = New-RandomBase64Url
@@ -480,9 +528,13 @@ function Connect-BitbucketSession {
             response_type = 'code'
             state = $state
         }))
-        $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri
+        if ($NoBrowser) {
+            if ([string]::IsNullOrWhiteSpace($AuthorizationEventKey)) { throw 'Mirror Manager authorization event channel is required in no-browser mode.' }
+            Write-ManagerAuthorization -Provider 'Bitbucket' -AuthorizationUri $authorizationUri -UserCode $null -AuthorizationEventKey $AuthorizationEventKey
+        }
+        $code = Receive-LoopbackOAuthCode -RedirectUri $script:BitbucketRedirectUri -ExpectedState $state -AuthorizationUri $authorizationUri -NoBrowser:$NoBrowser
 
-        $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${clientId}:$clientSecret")
+        $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${clientId}:$ClientSecret")
         $basic = [Convert]::ToBase64String($credentialBytes)
         $tokenResponse = Invoke-RestMethod -Method POST -Uri 'https://bitbucket.org/site/oauth2/access_token' -Headers @{ Authorization = "Basic $basic"; Accept = 'application/json' } -ContentType 'application/x-www-form-urlencoded' -Body @{
             grant_type = 'authorization_code'
@@ -501,7 +553,7 @@ function Connect-BitbucketSession {
         Write-Host 'Bitbucket authenticated for this process.'
     }
     finally {
-        $clientSecret = $null
+        $ClientSecret = $null
     }
 }
 

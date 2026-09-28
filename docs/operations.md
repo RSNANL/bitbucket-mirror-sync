@@ -8,6 +8,16 @@ All provider-changing operations require an active management session created wi
 
 A new PowerShell process must authenticate again. See `authentication.md`.
 
+The same operations can be run from one local UI:
+
+```powershell
+./tools/Start-MirrorManager.ps1
+```
+
+The UI exposes provider connection state, the authoritative mirror registry, validation, dispatch, full synchronization validation, provisioning, configuration flags, repair, two-phase key rotation, removal and Worker deployment. Long-running output is shown in Activity. Only one operation runs at a time.
+
+Planning operations remain non-mutating. After a plan succeeds, the UI enables a separate **Apply reviewed plan** action that repeats the same allowlisted inputs with `-Apply`. Configuration changes still require review and publication through Git after the local file is updated; the UI does not silently commit or push.
+
 ## Deploy the Worker
 
 `Deploy-MirrorWorker.ps1` is planning-only unless `-Apply` is supplied. It deploys the current Worker source and mirror configuration directly through the active Cloudflare OAuth session, preserves existing Worker secrets and enables the configured `workers.dev` route. After deployment it binds a random short-lived preflight secret and verifies the GitHub App JWT identity, exact installation, dispatch-repository access and installed `Actions: write` permission through separate provider checks. It then requests the same repository- and permission-bounded installation token used by normal dispatch, validates its effective scope and revokes it immediately. The preflight secret is always removed. Deployment fails at the exact unsuccessful authentication boundary; no mirror workflow is dispatched by this check.

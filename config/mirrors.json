@@ -19,6 +19,13 @@
       "scheduled_recovery": true
     },
     {
+      "id": "electrical-engineering-convention",
+      "enabled": true,
+      "bitbucket_repository": "rsna_nl/electrical-engineering-convention",
+      "github_repository": "RSNANL/electrical-engineering-convention-mirror",
+      "scheduled_recovery": false
+    },
+    {
       "id": "generic-vacuum-statemachine-blueprint",
       "enabled": true,
       "bitbucket_repository": "rsna_nl/generic-vacuum-statemachine-blueprint",

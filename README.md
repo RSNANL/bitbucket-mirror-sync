@@ -11,6 +11,7 @@ Configuration-driven infrastructure for disposable GitHub mirrors of authoritati
 - Cloudflare Worker authenticates Bitbucket push webhooks and dispatches the generic GitHub Actions mirror workflow.
 - GitHub Actions performs transient Git synchronization with repository-scoped SSH credentials.
 - PowerShell 7 tooling provisions, validates, rotates, repairs and removes mirror resources from an interactively authenticated management session.
+- Mirror Manager provides a local browser UI over the same allowlisted PowerShell management operations.
 
 ## Repository layout
 
@@ -33,6 +34,7 @@ worker/
   src/                      Webhook authentication and dispatch Worker.
   test/                     Worker behavior tests.
 tools/
+  Start-MirrorManager.ps1   Secured local management host and UI.
   Connect-MirrorSession.ps1 Interactive provider authentication.
   Disconnect-MirrorSession.ps1
   Modules/                  Provider and session modules.
@@ -42,12 +44,14 @@ tools/
   Rotate-MirrorKeys.ps1     Two-phase key rotation.
   Repair-Mirror.ps1         Mirror and credential repair.
   Remove-Mirror.ps1         Managed resource removal.
+manager/web/                Local Mirror Manager interface assets.
 docs/
   architecture.md
   authentication.md
   security-model.md
   provisioning.md
   operations.md
+  mirror-manager.md
 ```
 
 ## Management authentication
@@ -65,6 +69,14 @@ End the session explicitly or close PowerShell:
 ```
 
 See `docs/authentication.md` for the provider application registrations and exact session boundary. OAuth callback URIs and requested scopes are implementation contracts and are not operator configuration.
+
+The same session and management tasks are available through the local Mirror Manager:
+
+```powershell
+./tools/Start-MirrorManager.ps1
+```
+
+It listens only on `http://127.0.0.1:53681`, opens the interface in the default browser and clears its process-scoped credentials when stopped. See `docs/mirror-manager.md`.
 
 ## Derived resource names
 

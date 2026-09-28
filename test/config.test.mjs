@@ -194,9 +194,10 @@ test("recovery matrix selects only enabled mirrors with scheduled recovery", asy
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-test("workflow triggers retain PR validation and daily recovery", () => {
+test("workflow triggers retain all-PR validation and daily recovery", () => {
   const validationWorkflow = fs.readFileSync(".github/workflows/validate.yml", "utf8");
-  assert.match(validationWorkflow, /pull_request:\n\s+branches:\n\s+- main/);
+  assert.match(validationWorkflow, /pull_request:/);
+  assert.doesNotMatch(validationWorkflow, /pull_request:\n\s+branches:/);
   assert.match(validationWorkflow, /workflow_dispatch:/);
 
   const recoveryWorkflow = fs.readFileSync(".github/workflows/mirror-recovery.yml", "utf8");
