@@ -93,7 +93,7 @@ if [[ -n "$source_repository" ]]; then
   chmod 600 "$ssh_dir/bitbucket_source" "$ssh_dir/github_target"
 
   write_verified_host_key \
-    bitbucket.org \
+    ssh.bitbucket.org \
     'SHA256:ybgmFkzwOSotHTHLJgHO0QN8L0xErw6vd0VhFA9m3SM' \
     "$ssh_dir/bitbucket_known_hosts"
   write_verified_host_key \
@@ -105,7 +105,7 @@ if [[ -n "$source_repository" ]]; then
 
   cat > "$ssh_dir/config" <<EOF
 Host bitbucket-mirror-source
-  HostName bitbucket.org
+  HostName ssh.bitbucket.org
   User git
   IdentityFile $ssh_dir/bitbucket_source
   IdentitiesOnly yes
